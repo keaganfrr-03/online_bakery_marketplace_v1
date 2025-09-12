@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Home - My Bakery{% endblock %}
+
+{% block content %}
+<h1 class="text-center mb-4">Welcome to My Bakery 🥖</h1>
+
+<div class="row row-cols-1 row-cols-md-3 g-4">
+    {% for category in categories %}
+    <div class="col">
+        <a href="{% url 'category_detail' category.id %}" class="text-decoration-none text-dark">
+            <div class="card h-100 shadow-sm text-center">
+                <img src="/media/products/{{ category.name|lower }}/{{ category.name|slice:":-1" }}1.jpg"
+                     class="card-img-top product-img"
+                     alt="{{ category.name }}">
+                <div class="card-body">
+                    <h5 class="card-title">{{ category.name }}</h5>
+                </div>
+            </div>
+        </a>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

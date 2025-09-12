@@ -1,0 +1,7 @@
+.product-img {
+    width: 410px;
+    height: 350px;
+    object-fit: cover;  /* crop/scale without distortion */
+    margin: 0 auto;     /* center the image horizontally */
+    display: block;
+}

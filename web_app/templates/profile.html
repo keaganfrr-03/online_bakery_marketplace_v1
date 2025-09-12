@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}My Profile{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>My Profile</h2>
+
+    <!-- Editable profile form -->
+    <form method="post" class="mb-4">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn btn-primary">Update Profile</button>
+    </form>
+
+    <hr>
+    <h3>Order History</h3>
+    {% if orders %}
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Order #</th>
+                    <th>Date</th>
+                    <th>Total</th>
+                    <th>Invoice</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for order in orders %}
+                <tr>
+                    <td>{{ order.id }}</td>
+                    <td>{{ order.created_at|date:"Y-m-d H:i" }}</td>
+                    <td>R{{ order.total_price }}</td>
+                    <!-- Now points to PDF invoice instead of order_confirmation -->
+                    <td>
+                        <a href="{% url 'invoice' order.id %}" class="btn btn-sm btn-secondary">
+                            Download Invoice
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No past orders found.</p>
+    {% endif %}
+</div>
+{% endblock %}

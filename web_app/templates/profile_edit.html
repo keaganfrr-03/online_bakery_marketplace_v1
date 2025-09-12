@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Edit Profile{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>Edit Profile</h2>
+    <form method="post">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label>First Name</label>
+            <input type="text" name="first_name" value="{{ user.first_name }}" class="form-control">
+        </div>
+        <div class="mb-3">
+            <label>Email</label>
+            <input type="email" name="email" value="{{ user.email }}" class="form-control">
+        </div>
+        {{ form.as_p }}
+        <button type="submit" class="btn btn-success">Save Changes</button>
+        <a href="{% url 'profile' %}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}
