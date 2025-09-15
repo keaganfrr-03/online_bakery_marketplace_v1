@@ -1,0 +1,59 @@
+{% extends "base_vendor.html" %}
+{% block title %}Reports{% endblock %}
+
+{% block vendor_content %}
+<h1 class="mb-4">Reports</h1>
+
+<!-- Filter Buttons -->
+<div class="mb-3">
+  <a href="?period=day" class="btn btn-outline-primary {% if period == 'day' %}active{% endif %}">Today</a>
+  <a href="?period=week" class="btn btn-outline-primary {% if period == 'week' %}active{% endif %}">This Week</a>
+  <a href="?period=month" class="btn btn-outline-primary {% if period == 'month' %}active{% endif %}">This Month</a>
+  <a href="?period=all" class="btn btn-outline-primary {% if period == 'all' %}active{% endif %}">All Time</a>
+</div>
+
+<!-- Sales Summary -->
+<div class="card mb-4">
+  <div class="card-body">
+    <h5 class="card-title">Total Sales ({{ period|title }})</h5>
+    <p class="card-text fs-4 fw-bold">${{ total_sales }}</p>
+  </div>
+</div>
+
+<!-- Sales Table -->
+<table class="table table-striped">
+  <thead>
+    <tr>
+      <th>Order ID</th>
+      <th>Product</th>
+      <th>Quantity</th>
+      <th>Price</th>
+      <th>Subtotal</th>
+      <th>Date</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for sale in sales %}
+      <tr>
+        <td>{{ sale.order.id }}</td>
+        <td>{{ sale.product.name }}</td>
+        <td>{{ sale.quantity }}</td>
+        <td>${{ sale.price }}</td>
+        <td>${{ sale.price|floatformat:2|add:"0"|floatformat:2|add:""|yesno:"" }}</td>
+        <td>{{ sale.order.created_at|date:"Y-m-d H:i" }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" class="text-center">No sales found for this period.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<!-- Download / Print Buttons -->
+<a href="{% url 'download_report' %}" class="btn btn-outline-primary me-2">
+  <i class="bi bi-download me-1"></i> Download Report
+</a>
+<a href="{% url 'print_report' %}" class="btn btn-outline-secondary">
+  <i class="bi bi-printer me-1"></i> Print Report
+</a>
+
+{% endblock %}
