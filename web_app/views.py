@@ -525,33 +525,40 @@ def profile_edit(request):
 @login_required
 def invoice_view(request, order_id):
     order = get_object_or_404(Order, id=order_id, user=request.user)
+
+    # Display PDF in browser instead of forcing download
     response = HttpResponse(content_type="application/pdf")
-    response["Content-Disposition"] = f'attachment; filename="invoice_{order.id}.pdf"'
+    response["Content-Disposition"] = f'inline; filename="invoice_{order.id}.pdf"'
 
     p = canvas.Canvas(response, pagesize=A4)
     width, height = A4
 
+    # Header
     p.setFont("Helvetica-Bold", 16)
-    p.drawString(100, height - 50, "My Bakery - Invoice")
+    p.drawString(100, height - 50, "Nyarie's Market - Invoice")
 
+    # Order details
     p.setFont("Helvetica", 12)
     p.drawString(100, height - 100, f"Order ID: {order.id}")
     p.drawString(100, height - 120, f"Date: {order.created_at.strftime('%Y-%m-%d')}")
     p.drawString(100, height - 140, f"Customer: {order.user.username}")
     p.drawString(100, height - 160, f"Delivery Address: {order.delivery_address}")
 
+    # Items
     y = height - 200
     total = 0
-    for item in order.items.all():
-        line = f"{item.product.name} (x{item.quantity}) - ${item.price * item.quantity:.2f}"
+    for item in order.orderitem_set.all():
+        line = f"{item.product.name} (x{item.quantity}) - R{item.price * item.quantity:.2f}"
         p.drawString(100, y, line)
         y -= 20
         total += item.price * item.quantity
 
-    p.drawString(100, y - 20, f"Total: ${total:.2f}")
+    # Total
+    p.drawString(100, y - 20, f"Total: R{total:.2f}")
 
     p.showPage()
     p.save()
+
     return response
 
 
@@ -1233,14 +1240,21 @@ def create_checkout_session(request):
 
 @login_required
 def success(request, order_id):
-    order = get_object_or_404(Order, id=order_id, user=request.user)
+    # Get the order
+    order = Order.objects.get(id=order_id, user=request.user)
+
+    # Update customer order status
     order.status = "paid"
     order.save()
 
-    # Fetch the related order items
-    order_items = order.orderitem_set.all()  # or use related_name if you set one
+    # Automatically update vendor-specific items
+    for item in order.orderitem_set.all():
+        # You could have a separate status per item if needed
+        # For now, just ensure the vendor's pending orders reflect the order status
+        pass  # No extra DB update needed if you rely on Order.status in vendor view
 
-    return render(request, "success.html", {"order": order, "order_items": order_items})
+    # Render the success page
+    return render(request, "success.html", {"order": order})
 
 
 @login_required
