@@ -153,25 +153,43 @@ document.addEventListener('DOMContentLoaded', () => {
         const formData = new FormData(checkoutForm);
         const paymentMethod = formData.get('payment_method');
 
-        const fetchOptions = {
-            method: 'POST',
-            headers: {'X-CSRFToken': csrfToken},
-            body: formData
-        };
-
-        // COD
+        // COD - use your existing checkout endpoint
         if(paymentMethod === 'cash'){
-            const response = await fetch("{% url 'checkout' %}", fetchOptions);
-            if(response.redirected) window.location.href = response.url;
-        }
-        // Stripe
-        else if(paymentMethod === 'card'){
-            const response = await fetch("{% url 'checkout' %}", fetchOptions);
-            const data = await response.json();
-            if(data.checkout_url){
-                window.location.href = data.checkout_url;
+            const response = await fetch("{% url 'checkout' %}", {
+                method: 'POST',
+                headers: {'X-CSRFToken': csrfToken},
+                body: formData
+            });
+            if(response.redirected) {
+                window.location.href = response.url;
             } else {
-                alert('Stripe checkout session failed.');
+                const result = await response.json();
+                if(result.error) {
+                    alert('Error: ' + result.error);
+                }
+            }
+        }
+        // Stripe - use the create-checkout-session endpoint
+        else if(paymentMethod === 'card'){
+            try {
+                const response = await fetch("{% url 'create_checkout_session' %}", {
+                    method: 'POST',
+                    headers: {'X-CSRFToken': csrfToken},
+                    body: new URLSearchParams({
+                        'delivery_address': formData.get('delivery_address')
+                    })
+                });
+
+                const data = await response.json();
+
+                if(data.checkout_url) {
+                    window.location.href = data.checkout_url;
+                } else {
+                    alert('Error: ' + (data.error || 'Unable to create checkout session'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred. Please try again.');
             }
         }
         // PayPal placeholder

@@ -34,13 +34,18 @@ urlpatterns = [
     path("accounts/profile/invoice/<int:order_id>/", invoice_view, name="invoice"),
     path("profile/edit/", vendor_edit_profile, name="vendor_edit_profile"),
 
-
     # Cart handling
     path("cart/", cart_view, name="cart"),
     path("cart/add-auth/<int:product_id>/", add_to_cart, name="add_to_cart"),
     path("cart/remove/<int:product_id>/", remove_from_cart, name="cart_remove"),
     path("checkout/", checkout_view, name="checkout"),
     path("order/<int:order_id>/confirmation/", order_confirmation, name="order_confirmation"),
+
+    # Stripe Payment
+    path('create-checkout-session/', create_checkout_session, name='create_checkout_session'),
+    path("success/<int:order_id>/", success, name="success"),
+    path("cancel/<int:order_id>/", cancel, name="cancel"),
+    path("stripe/webhook/", stripe_webhook, name="stripe_webhook"),
 
     # Vendor Dashboard
     path("vendor_dash/", vendor_dash, name="vendor_dash"),
@@ -71,13 +76,7 @@ urlpatterns = [
     path("orders/<int:order_id>/update/", update_order_status, name="update_order_status"),
     path("vendor/orders/history/", vendor_order_history, name="vendor_order_history"),
     path("order_history/", customer_order_history, name="customer_order_history"),
-    path("accounts/profile/invoice/<int:order_id>/", invoice_view, name="invoice"),
-    path('create-checkout-session/', create_checkout_session, name='checkout'),
-    path("success/<int:order_id>/", success, name="success"),
-    path("cancel/<int:order_id>/", cancel, name="cancel"),
     path("customer_dashboard/", customer_dashboard, name="customer_dashboard"),
-    path("stripe/webhook/", stripe_webhook, name="stripe_webhook"),
-
 ]
 
 if settings.DEBUG:

@@ -87,10 +87,17 @@ class Order(models.Model):
         ("cancelled", "Cancelled"),
     ]
 
+    PAYMENT_CHOICES = [
+        ("card", "Credit/Debit Card"),
+        ("cash", "Cash on Delivery"),
+        ("paypal", "PayPal"),
+    ]
+
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="orders")
     products = models.ManyToManyField(Product, through='OrderItem')
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
     delivery_address = models.TextField()
+    payment_method = models.CharField(max_length=10, choices=PAYMENT_CHOICES, default="cash")
     created_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
 
