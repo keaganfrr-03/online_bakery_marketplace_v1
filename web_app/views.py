@@ -1138,7 +1138,6 @@ def sales_dashboard(request):
     return render(request, "vendor/sales.html", context)
 
 
-
 @login_required
 def reports_view(request):
     """Generate and display sales reports"""
@@ -1188,7 +1187,7 @@ def download_report(request):
         return redirect("index")
 
     period = request.GET.get("period", "all")
-    sales = OrderItem.objects.filter(product__vendor=request.user)
+    sales = OrderItem.objects.filter(product__vendor=request.user, order__status = "paid")
 
     now = timezone.now()
     if period == "day":
@@ -1250,30 +1249,42 @@ def download_report(request):
 
 @login_required
 def print_report(request):
-    """Print-friendly report view"""
+    """Print-friendly vendor sales report"""
     if request.user.user_type != "vendor":
         messages.error(request, "Only vendors can print reports.")
         return redirect("index")
 
     period = request.GET.get("period", "all")
-    sales = OrderItem.objects.filter(product__vendor=request.user)
+    sales_qs = OrderItem.objects.filter(product__vendor=request.user, order__status="paid")
 
     now = timezone.now()
     if period == "day":
-        sales = sales.filter(order__created_at__gte=now - timedelta(days=1))
+        sales_qs = sales_qs.filter(order__created_at__gte=now - timedelta(days=1))
     elif period == "week":
-        sales = sales.filter(order__created_at__gte=now - timedelta(weeks=1))
+        sales_qs = sales_qs.filter(order__created_at__gte=now - timedelta(weeks=1))
     elif period == "month":
-        sales = sales.filter(order__created_at__gte=now - timedelta(days=30))
+        sales_qs = sales_qs.filter(order__created_at__gte=now - timedelta(days=30))
 
-    total_sales = sum(item.price * item.quantity for item in sales)
+    # Prepare a list of items with calculated total per item
+    sales = []
+    total_sales = 0
+    for item in sales_qs:
+        item_total = item.price * item.quantity
+        sales.append({
+            "order_id": item.order.id,
+            "product_name": item.product.name,
+            "quantity": item.quantity,
+            "unit_price": item.price,
+            "total": item_total,
+            "date": item.order.created_at,
+        })
+        total_sales += item_total
 
     return render(request, "vendor/print_report.html", {
         "sales": sales,
         "total_sales": total_sales,
         "period": period,
     })
-
 
 # VENDOR SETTINGS AND CONFIGURATION
 # Functions for managing vendor-specific settings
@@ -1383,6 +1394,65 @@ def invoice_view(request, order_id):
     p.save()
 
     return response
+
+
+# CUSTOMER REPORTS GENERATION
+@login_required
+def download_customer_order_history(request):
+    """Download PDF of customer order history"""
+    orders = Order.objects.filter(user=request.user).order_by("-created_at")
+
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # Title
+    elements.append(Paragraph("My Order History", styles["Title"]))
+    elements.append(Spacer(1, 12))
+
+    # Table data
+    data = [["Order ID", "Date", "Total", "Address", "Status"]]
+    for order in orders:
+        data.append([
+            str(order.id),
+            order.created_at.strftime("%Y-%m-%d %H:%M"),
+            f"R{order.total_price:.2f}",
+            order.delivery_address,
+            order.status.title(),
+        ])
+
+    table = Table(data, repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+        ("GRID", (0, 0), (-1, -1), 1, colors.black),
+    ]))
+    elements.append(table)
+
+    doc.build(elements)
+    buffer.seek(0)
+
+    response = HttpResponse(buffer, content_type="application/pdf")
+    response["Content-Disposition"] = 'attachment; filename="order_history.pdf"'
+    return response
+
+
+@login_required
+def print_customer_order_history(request):
+    """Print-friendly customer order history"""
+    customer = request.user
+    # Fetch completed and cancelled orders separately
+    completed_orders = Order.objects.filter(user=customer, status="paid").order_by("-created_at")
+    cancelled_orders = Order.objects.filter(user=customer, status="cancelled").order_by("-created_at")
+
+    return render(request, "print_order_history.html", {
+        "completed_orders": completed_orders,
+        "cancelled_orders": cancelled_orders,
+    })
 
 
 # PAYMENTS AND STRIPE INTEGRATION

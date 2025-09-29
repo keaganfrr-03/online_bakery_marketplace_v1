@@ -15,13 +15,26 @@
 </form>
 
 {% if sales %}
-    <h4>
-        Total Sales
-        {% if period == "day" %}(Today){% endif %}
-        {% if period == "week" %}(This Week){% endif %}
-        {% if period == "month" %}(This Month){% endif %}
-        {% if period == "all" %}(All Time){% endif %}
-    </h4>
+    <div class="d-flex justify-content-between align-items-center mt-4">
+        <h4 class="mb-0">
+            Total Sales
+            {% if period == "day" %}(Today){% endif %}
+            {% if period == "week" %}(This Week){% endif %}
+            {% if period == "month" %}(This Month){% endif %}
+            {% if period == "all" %}(All Time){% endif %}
+        </h4>
+        <div>
+            <!-- Print button -->
+            <a href="{% url 'print_report' %}?period={{ period }}" target="_blank" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-printer"></i> Print
+            </a>
+            <!-- Download button -->
+            <a href="{% url 'download_report' %}?period={{ period }}" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-download"></i> Download
+            </a>
+        </div>
+    </div>
+
     <p><strong>R{{ total_sales }}</strong></p>
 
     <table class="table table-bordered table-striped mt-4">
@@ -57,4 +70,5 @@
 {% else %}
     <p class="text-muted">No sales found for this period.</p>
 {% endif %}
+
 {% endblock %}

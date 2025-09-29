@@ -1,38 +1,20 @@
 {% extends "base_sidebar.html" %}
-{% block title %}Order History{% endblock %}
-
-{% block sidebar %}
-<h6 class="px-3 mt-3 mb-2 text-muted text-uppercase small">My Account</h6>
-<ul class="nav flex-column">
-    <li class="nav-item"><a class="nav-link" href="{% url 'profile' %}"><i class="bi bi-person-circle me-2"></i> Profile Info</a></li>
-    <li class="nav-item"><a class="nav-link" href="{% url 'customer_orders' %}"><i class="bi bi-cart-check me-2"></i> Active Orders</a></li>
-    <li class="nav-item"><a class="nav-link active" href="{% url 'customer_order_history' %}"><i class="bi bi-clock-history me-2"></i> Order History</a></li>
-    <li class="nav-item"><a class="nav-link" href="{% url 'cart' %}"><i class="bi bi-bag me-2"></i> Cart</a></li>
-</ul>
-
-<h6 class="px-3 mt-4 mb-2 text-muted text-uppercase small">Navigation</h6>
-<ul class="nav flex-column mb-2">
-    <li class="nav-item"><a class="nav-link" href="{% url 'index' %}"><i class="bi bi-house me-2"></i> Home</a></li>
-    <li class="nav-item"><a class="nav-link" href="{% url 'about' %}"><i class="bi bi-info-circle me-2"></i> About</a></li>
-    <li class="nav-item"><a class="nav-link" href="{% url 'contact' %}"><i class="bi bi-envelope me-2"></i> Contact</a></li>
-</ul>
-{% endblock %}
+{% block title %}My Order History{% endblock %}
 
 {% block content %}
 <h2 class="mb-4">My Order History</h2>
 
-<!-- Buttons Row -->
-<div class="d-flex justify-content-end mb-3">
-    <!-- Print -->
-    <a href="{% url 'print_customer_order_history' %}" target="_blank" class="btn btn-outline-secondary btn-sm me-2">
+<!-- Buttons Row (hidden when printing) -->
+<div class="d-flex justify-content-end mb-3 no-print">
+    <!-- Print Button -->
+    <button onclick="window.print()" class="btn btn-outline-secondary btn-sm me-2">
         <i class="bi bi-printer"></i> Print
-    </a>
-    <!-- Download -->
+    </button>
+    <!-- Download PDF -->
     <a href="{% url 'download_customer_order_history' %}" class="btn btn-outline-primary btn-sm">
         <i class="bi bi-download"></i> Download
     </a>
 </div>
-
 
 {# ✅ Completed Orders #}
 <h4 class="mt-4">✅ Completed Orders</h4>
@@ -91,4 +73,14 @@
 {% else %}
     <p class="text-muted">No cancelled orders.</p>
 {% endif %}
+
+<!-- Print-only CSS -->
+<style>
+@media print {
+    .no-print {
+        display: none !important;
+    }
+}
+</style>
+
 {% endblock %}
