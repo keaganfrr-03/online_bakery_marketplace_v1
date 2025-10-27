@@ -1370,7 +1370,7 @@ def invoice_view(request, order_id):
 
     # Header
     p.setFont("Helvetica-Bold", 16)
-    p.drawString(100, height - 50, "Nyarie's Market - Invoice")
+    p.drawString(100, height - 50, "Crumb & Co. - Invoice")
 
     # Order details
     p.setFont("Helvetica", 12)

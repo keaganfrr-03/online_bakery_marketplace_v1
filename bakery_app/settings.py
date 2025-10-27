@@ -45,7 +45,7 @@ INSTALLED_APPS = [
     'web_app',
     'bakery_app',
     'widget_tweaks',
-
+    'django_extensions',
 ]
 
 MIDDLEWARE = [

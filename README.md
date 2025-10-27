@@ -4,10 +4,10 @@ Setup
 1. Clone the repo git clone: git clone https://github.com/eddiecns/online_bakery_market.git 
 2. and then run: cd online_bakery_market
 3. Create a branch and switch to it: git checkout -b my_version
-4. Create virtual environment: python3 -m venv venv
-5. Activate the venv source: venv/bin/activate
+4. Create virtual environment: python -m venv .venv
+5. Activate the venv source: .\.venv\Scripts\activate
 6. Install dependencies: pip install -r requirements.txt
-7. Copy the config file: .env.example .env
+7. Copy the config file: cp .env.example .env
 8. Edit .env and update your local settings: with MYSQl DB username, password and the Django secret key
 9. To reveal the Django secret key type: python manage.py shell and then: 
 from decouple import config
@@ -17,6 +17,8 @@ print(config("SECRET_KEY"))
 12. Create local admin user: python manage.py createsuperuser
 13. Start the app server: python manage.py runserver
 14. Enter admin name, password  and email
+15. Register for a demo account on https://dashboard.stripe.com/
+16. Open Developers--> API keys --> copy and paste into the .env file the Publishable key and Secret key
 
 Main app page will be accessed in browser on http://localhost:8000
 Django/system dashboard is accessed on http://localhost:8000/admin
@@ -29,8 +31,6 @@ User account creation, login, and logout
 Staff users can create, view, edit, and delete products and ingredients
 Users can create orders with any number of products/ingredients
 Users can view their own orders
-
-Reach out to me at eddie@ecns.co.za for any queries.
 
 Card number: 4242 4242 4242 4242
 Expiration date: any future date (e.g., 12/34)
@@ -90,4 +90,6 @@ ZIP: any 5 digits (e.g., 12345)
 |                               | `stripe_success`                  | Handle Stripe payment success.                         |
 |                               | `stripe_webhook`                  | Stripe webhook for checkout completion.                |
 
+
+Reach out to me at eddie@ecns.co.za for any queries.
 

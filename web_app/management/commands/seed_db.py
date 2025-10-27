@@ -9,11 +9,48 @@ User = get_user_model()
 class Command(BaseCommand):
     help = "Seeds the database with sample users, categories, products, carts, and orders."
 
-    def handle(self, *args, **kwargs):
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--force',
+            action='store_true',
+            help='Force seeding even if data exists',
+        )
+
+    def handle(self, *args, **options):
+        force = options.get('force', False)
+
+        # Check if data already exists
+        if Product.objects.exists() and not force:
+            self.stdout.write(self.style.SUCCESS("✅ Database already contains data. Skipping seed."))
+            return
+
+        if force:
+            self.stdout.write(self.style.WARNING("🔄 Force flag detected. Clearing and re-seeding..."))
+            Product.objects.all().delete()
+            Category.objects.all().delete()
+            Order.objects.all().delete()
+            Cart.objects.all().delete()
+            # Don't delete users when forcing, just update them
+
         self.stdout.write("🌱 Seeding database...")
 
+        # === CREATE SUPERUSER ===
+        admin, created = User.objects.get_or_create(
+            username="admin",
+            defaults={
+                "email": "admin@bakery.com",
+                "user_type": "admin",
+                "is_staff": True,
+                "is_superuser": True,
+            },
+        )
+        if created or force:
+            admin.set_password("admin")
+            admin.save()
+            self.stdout.write(self.style.SUCCESS("👤 Superuser 'admin' created (password: admin)"))
+
         # === USERS ===
-        eddie, _ = User.objects.get_or_create(
+        eddie, created = User.objects.get_or_create(
             username="eddie",
             defaults={
                 "email": "eddie@ecns.co.za",
@@ -22,39 +59,45 @@ class Command(BaseCommand):
                 "is_superuser": True,
             },
         )
-        eddie.set_password("adminpass")
-        eddie.save()
+        if created or force:
+            eddie.set_password("adminpass")
+            eddie.save()
 
-        vendor1, _ = User.objects.get_or_create(
+        vendor1, created = User.objects.get_or_create(
             username="vendor1",
             defaults={"email": "vendor1@bakeries.co.za", "user_type": "vendor"},
         )
-        vendor1.set_password("vendorpass")
-        vendor1.save()
+        if created or force:
+            vendor1.set_password("vendorpass")
+            vendor1.save()
 
-        vendor2, _ = User.objects.get_or_create(
+        vendor2, created = User.objects.get_or_create(
             username="vendor2",
             defaults={"email": "vendor2@bakers.co.za", "user_type": "vendor"},
         )
-        vendor2.set_password("vendorpass")
-        vendor2.save()
+        if created or force:
+            vendor2.set_password("vendorpass")
+            vendor2.save()
 
-        customer1, _ = User.objects.get_or_create(
+        customer1, created = User.objects.get_or_create(
             username="customer1",
             defaults={"email": "customer1@gmail.co.za", "user_type": "customer"},
         )
-        customer1.set_password("customerpass")
-        customer1.save()
+        if created or force:
+            customer1.set_password("customerpass")
+            customer1.save()
 
-        customer2, _ = User.objects.get_or_create(
+        customer2, created = User.objects.get_or_create(
             username="customer2",
             defaults={"email": "customer2@yahoo.co.za", "user_type": "customer"},
         )
-        customer2.set_password("customerpass")
-        customer2.save()
+        if created or force:
+            customer2.set_password("customerpass")
+            customer2.save()
 
         # === CATEGORIES ===
-        categories = ["Cakes", "Breads", "Pastries", "Cookies", "Donuts", "Muffins", "Pizza", "Buns", "Pies", "Cupcakes", "Brownies"]
+        categories = ["Cakes", "Breads", "Pastries", "Cookies", "Donuts", "Muffins", "Pizza", "Buns", "Pies",
+                      "Cupcakes", "Brownies"]
         category_objs = {}
         for name in categories:
             obj, _ = Category.objects.get_or_create(name=name)
@@ -67,7 +110,8 @@ class Command(BaseCommand):
             ("Vanilla Cake", "Classic vanilla cake", "Cakes", 12.99, 8, "products/cakes/cake2.jpg"),
             ("Red Velvet Cake", "Smooth red velvet cake", "Cakes", 16.50, 5, "products/cakes/cake3.jpg"),
             ("Lemon Cake", "Tangy lemon cake", "Cakes", 14.99, 7, "products/cakes/cake4.jpg"),
-            ("Carrot Cake", "Moist carrot cake with cream cheese frosting", "Cakes", 13.99, 6, "products/cakes/cake5.jpg"),
+            ("Carrot Cake", "Moist carrot cake with cream cheese frosting", "Cakes", 13.99, 6,
+             "products/cakes/cake5.jpg"),
 
             # Breads
             ("Banana Bread", "Moist banana bread", "Breads", 6.99, 20, "products/breads/bread1.jpg"),
@@ -84,11 +128,13 @@ class Command(BaseCommand):
             ("Éclair", "Chocolate-covered éclair", "Pastries", 4.25, 10, "products/pastries/pastry5.jpg"),
 
             # Cookies
-            ("Chocolate Chip Cookie", "Loaded with chocolate chips", "Cookies", 1.99, 50, "products/cookies/cookie1.jpg"),
+            ("Chocolate Chip Cookie", "Loaded with chocolate chips", "Cookies", 1.99, 50,
+             "products/cookies/cookie1.jpg"),
             ("Oatmeal Cookie", "Healthy oatmeal cookie", "Cookies", 1.50, 40, "products/cookies/cookie2.jpg"),
             ("Peanut Butter Cookie", "Rich peanut butter flavor", "Cookies", 1.75, 35, "products/cookies/cookie3.jpg"),
             ("Sugar Cookie", "Classic sweet cookie", "Cookies", 1.25, 45, "products/cookies/cookie4.jpg"),
-            ("Double Chocolate Cookie", "Extra chocolatey goodness", "Cookies", 2.25, 30, "products/cookies/cookie5.jpg"),
+            ("Double Chocolate Cookie", "Extra chocolatey goodness", "Cookies", 2.25, 30,
+             "products/cookies/cookie5.jpg"),
 
             # Donuts
             ("Glazed Donut", "Sweet glazed donut", "Donuts", 1.25, 30, "products/donuts/donut1.jpg"),
@@ -122,16 +168,12 @@ class Command(BaseCommand):
              "products/pizza/pizza5.jpg"),
 
             # Buns
-            ("Sesame Bun", "Soft bun topped with sesame seeds", "Buns", 1.50, 25,
-             "products/buns/bun1.jpg"),
-            ("Garlic Knot", "Soft bread knot brushed with garlic butter", "Buns", 1.80, 20,
-             "products/buns/bun2.jpg"),
+            ("Sesame Bun", "Soft bun topped with sesame seeds", "Buns", 1.50, 25, "products/buns/bun1.jpg"),
+            ("Garlic Knot", "Soft bread knot brushed with garlic butter", "Buns", 1.80, 20, "products/buns/bun2.jpg"),
             ("Cinnamon Bun", "Sweet bun with cinnamon swirl and icing glaze", "Buns", 2.20, 18,
              "products/buns/bun3.jpg"),
-            ("Burger Bun", "Classic soft bun for burgers and sandwiches", "Buns", 1.40, 30,
-             "products/buns/bun4.jpg"),
-            ("Hot Dog Bun", "Fluffy bun perfect for hot dogs and sausages", "Buns", 1.30, 28,
-             "products/buns/bun5.jpg"),
+            ("Burger Bun", "Classic soft bun for burgers and sandwiches", "Buns", 1.40, 30, "products/buns/bun4.jpg"),
+            ("Hot Dog Bun", "Fluffy bun perfect for hot dogs and sausages", "Buns", 1.30, 28, "products/buns/bun5.jpg"),
 
             # Pies
             ("Apple Pie Slice", "Classic apple pie with cinnamon", "Pies", 3.50, 15, "products/pies/pie1.jpg"),
@@ -194,7 +236,14 @@ class Command(BaseCommand):
                 "created_at": timezone.now(),
             },
         )
-        OrderItem.objects.get_or_create(order=order1, product=product_objs["Chocolate Cake"], defaults={"quantity": 2, "price": 15.99})
-        OrderItem.objects.get_or_create(order=order1, product=product_objs["Glazed Donut"], defaults={"quantity": 4, "price": 1.25})
+        OrderItem.objects.get_or_create(order=order1, product=product_objs["Chocolate Cake"],
+                                        defaults={"quantity": 2, "price": 15.99})
+        OrderItem.objects.get_or_create(order=order1, product=product_objs["Glazed Donut"],
+                                        defaults={"quantity": 4, "price": 1.25})
 
-        self.stdout.write(self.style.SUCCESS("✅ Database seeded successfully with 25 products and images!"))
+        self.stdout.write(self.style.SUCCESS("✅ Database seeded successfully!"))
+        self.stdout.write(self.style.SUCCESS("🔐 Login credentials:"))
+        self.stdout.write(self.style.SUCCESS("   Superuser: admin / admin"))
+        self.stdout.write(self.style.SUCCESS("   Admin: eddie / adminpass"))
+        self.stdout.write(self.style.SUCCESS("   Vendor: vendor1 / vendorpass"))
+        self.stdout.write(self.style.SUCCESS("   Customer: customer1 / customerpass"))

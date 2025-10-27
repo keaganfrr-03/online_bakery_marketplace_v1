@@ -90,7 +90,7 @@ class VendorSettingsForm(forms.Form):
 class VendorLoginForm(AuthenticationForm):
     vendor_id = forms.CharField(
         required=False,  # for now it's just visual, not validated
-        label="If you are a vendor, ender your Vendor ID",
+        label="For vendors, enter your Vendor ID",
         widget=forms.TextInput(
             attrs={"class": "form-control", "placeholder": "Enter Vendor ID"}
         ),
