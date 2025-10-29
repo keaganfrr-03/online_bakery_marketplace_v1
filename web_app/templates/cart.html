@@ -30,9 +30,9 @@
 .profile-header {
     background: linear-gradient(135deg, #8b4d23 0%, #5C3317 100%);
     color: white;
-    padding: 2rem;
+    padding: 1rem;
     border-radius: 15px;
-    margin-bottom: 2rem;
+    margin-bottom: 1rem;
     box-shadow: 0 8px 24px rgba(139, 77, 35, 0.2);
 }
 
@@ -53,8 +53,8 @@
     border: none;
     border-radius: 20px;
     box-shadow: 0 10px 40px rgba(139, 77, 35, 0.1);
-    padding: 2rem;
-    margin-bottom: 2rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
 }
 
 .cart-item {
@@ -136,9 +136,9 @@
 .cart-total-section {
     background: linear-gradient(135deg, #8b4d23 0%, #5C3317 100%);
     color: white;
-    padding: 1.5rem 2rem;
+    padding: 0.5rem 1rem;
     border-radius: 15px;
-    margin-top: 1.5rem;
+    margin-top: 0.5rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -224,7 +224,7 @@
     border: none;
     border-radius: 20px;
     box-shadow: 0 10px 40px rgba(139, 77, 35, 0.1);
-    padding: 4rem 2rem;
+    padding: 2rem 1rem;
     text-align: center;
 }
 
@@ -244,14 +244,14 @@
 .empty-cart p {
     color: #6c757d;
     font-size: 1.1rem;
-    margin-bottom: 2rem;
+    margin-bottom: 1rem;
 }
 
 .btn-shop {
     background: linear-gradient(135deg, #8b4d23 0%, #5C3317 100%);
     color: white;
     border: none;
-    padding: 0.8rem 2rem;
+    padding: 0.8rem 1rem;
     border-radius: 10px;
     font-size: 1rem;
     font-weight: 600;
@@ -292,6 +292,16 @@
 .cart-item {
     animation: fadeIn 0.5s ease forwards;
 }
+
+#checkout-form {
+    text-align: center;
+}
+#checkout-form .btn-save {
+    display: inline-block;
+    margin-top: 1rem;
+}
+
+
 
 @media (max-width: 768px) {
     .profile-header {
@@ -391,7 +401,7 @@
             </select>
         </div>
 
-        <button type="submit" class="btn-checkout">
+        <button type="submit" class="btn-save">
             <i class="bi bi-check-circle me-2"></i>Place Order
         </button>
     </form>
@@ -486,9 +496,8 @@ document.addEventListener('DOMContentLoaded', () => {
     <i class="bi bi-cart-x"></i>
     <h4>Your Cart is Empty</h4>
     <p>Looks like you haven't added any items to your cart yet.</p>
-    <a href="{% url 'index' %}" class="btn-shop">
-        <i class="bi bi-shop me-2"></i>Start Shopping
-    </a>
+    <a href="{% url 'index' %}" class="btn-save">Start Shopping</a>
+
 </div>
 {% endif %}
 {% endblock %}

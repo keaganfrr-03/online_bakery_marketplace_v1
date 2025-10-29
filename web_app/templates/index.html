@@ -1,7 +1,13 @@
 {% extends "base.html" %}
+{% load static %}
+
 {% block title %}Home{% endblock %}
 
 {% block content %}
+
+<!-- Custom CSS -->
+<link rel="stylesheet" href="{% static 'css/styles.css' %}">
+
 <h1 class="text-center mb-4">Welcome to Crumb & Co. 🥖</h1>
 
 <style>

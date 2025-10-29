@@ -31,8 +31,8 @@
     <p>Track and manage your active orders</p>
 </div>
 
-<div class="orders-card">
-    {% if orders %}
+{% if orders %}
+    <div class="orders-card">
         {% for order in orders %}
             <div class="order-item" style="animation-delay: {{ forloop.counter0|add:'0.1'|floatformat:1 }}s;">
                 <div class="order-header">
@@ -70,23 +70,21 @@
                     </div>
 
                     <div class="order-detail-item">
-                        <span class="order-detail-label">
-                            <i class="bi bi-currency-dollar me-1"></i>Total Amount
-                        </span>
+                        <span class="order-detail-label">Total Amount</span>
                         <span class="order-total">R{{ order.total_price }}</span>
                     </div>
                 </div>
             </div>
         {% endfor %}
-    {% else %}
+    </div>
+{% else %}
+    <div class="orders-card">
         <div class="empty-state">
             <i class="bi bi-cart-x"></i>
             <h4>No Active Orders</h4>
             <p>You don't have any current orders. Start shopping to place your first order!</p>
-            <a href="{% url 'index' %}" class="btn-browse">
-                <i class="bi bi-shop me-2"></i>Browse Products
-            </a>
+            <a href="{% url 'index' %}" class="btn-browse">Browse Products</a>
         </div>
-    {% endif %}
-</div>
+    </div>
+{% endif %}
 {% endblock %}

@@ -1,9 +1,9 @@
 .profile-header {
     background: linear-gradient(135deg, #8b4d23 0%, #5C3317 100%);
     color: white;
-    padding: 2rem;
+    padding: 1rem;
     border-radius: 15px;
-    margin-bottom: 2rem;
+    margin-bottom: 1rem;
     box-shadow: 0 8px 24px rgba(139, 77, 35, 0.2);
 }
 
@@ -178,14 +178,12 @@
     text-align: center;
 }
 
-check from here
-
 .profile-header {
     background: linear-gradient(135deg, #8b4d23 0%, #5C3317 100%);
     color: white;
-    padding: 2rem;
+    padding: 1rem;
     border-radius: 15px;
-    margin-bottom: 2rem;
+    margin-bottom: 1rem;
     box-shadow: 0 8px 24px rgba(139, 77, 35, 0.2);
 }
 
@@ -213,8 +211,8 @@ check from here
     background: #faf6f1;
     border: 2px solid #f5ebe0;
     border-radius: 15px;
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
     transition: all 0.3s ease;
 }
 
@@ -228,8 +226,8 @@ check from here
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
-    padding-bottom: 1rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.75rem;
     border-bottom: 2px solid #e5e7eb;
 }
 
@@ -247,20 +245,22 @@ check from here
 .order-details {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-    margin-bottom: 1rem;
+    gap: 0.75rem;
+    margin-bottom: 0;
 }
 
 .order-detail-item {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 .order-detail-label {
     font-size: 0.85rem;
     color: #8b4d23;
     font-weight: 600;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0;
 }
 
 .order-detail-value {
@@ -363,3 +363,4 @@ check from here
         grid-template-columns: 1fr;
     }
 }
+

@@ -1,6 +1,4 @@
-from .models import Category
-from .models import Cart
-
+from .models import Category, Cart
 
 def categories_context(request):
     return {

@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.contrib.staticfiles import finders
 from django.core.paginator import Paginator
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
@@ -30,16 +31,18 @@ from django.dispatch import receiver
 from django.utils import timezone
 from datetime import timedelta
 from django.db.models import Sum, Prefetch, F, DecimalField, ExpressionWrapper, Max, Count
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import getSampleStyleSheet
 import io
 import stripe
 from django.conf import settings
 import logging
-
 from .utils import log_activity
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+import os
+
 
 logger = logging.getLogger('portal')
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -534,12 +537,16 @@ def add_to_cart(request, product_id):
                 cart_item.quantity += qty
                 cart_item.save()
 
+            # ✅ Calculate total cart count
+            cart_count = Cart.objects.filter(user=request.user).count()
+
             # ✅ If AJAX request, return JSON for snackbar
             if request.headers.get('x-requested-with') == 'XMLHttpRequest':
                 return JsonResponse({
                     "message": f'"{product.name}" added to cart!',
                     "quantity": cart_item.quantity,
-                    "product_id": product.id
+                    "product_id": product.id,
+                    "cart_count": cart_count  # ✅ Include cart count
                 })
 
             # Normal form submission: redirect back
@@ -561,6 +568,30 @@ def add_to_cart(request, product_id):
             return redirect("login")
 
     return redirect("index")
+
+
+def update_cart(request):
+    """Update cart quantities or remove items"""
+    if request.method == "POST" and request.user.is_authenticated:
+        product_id = request.POST.get("product_id")
+        quantity = int(request.POST.get("quantity", 0))
+
+        product = get_object_or_404(Product, id=product_id)
+        cart_item = Cart.objects.filter(user=request.user, product=product).first()
+
+        if cart_item:
+            if quantity > 0:
+                cart_item.quantity = quantity
+                cart_item.save()
+            else:
+                cart_item.delete()
+
+        # Return updated cart count
+        cart_count = Cart.objects.filter(user=request.user).count()
+
+        return JsonResponse({"cart_count": cart_count})
+
+    return JsonResponse({"error": "Unauthorized"}, status=401)
 
 
 @login_required
@@ -1428,39 +1459,104 @@ def invoice_view(request, order_id):
 @login_required
 def download_customer_order_history(request):
     """Download PDF of customer order history"""
-    orders = Order.objects.filter(user=request.user).order_by("-created_at")
+    completed_orders = Order.objects.filter(user=request.user, status='paid').order_by("-created_at")
+    cancelled_orders = Order.objects.filter(user=request.user, status='cancelled').order_by("-created_at")
 
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     styles = getSampleStyleSheet()
+
+    # Custom styles
+    styles.add(ParagraphStyle(name='CenterTitle', fontSize=18, leading=22, alignment=TA_CENTER, spaceAfter=10))
+    styles.add(ParagraphStyle(name='CenterSubTitle', fontSize=12, leading=14, alignment=TA_CENTER, spaceAfter=20))
+    styles.add(ParagraphStyle(name='HeadingLeft', fontSize=14, leading=16, alignment=TA_LEFT, spaceAfter=10))
+
     elements = []
 
-    # Title
-    elements.append(Paragraph("My Order History", styles["Title"]))
+    # path to the logo
+    logo_path = finders.find('images/logo.png')
+
+    if logo_path:
+        try:
+            logo = Image(logo_path, width=80, height=80)
+            logo.hAlign = 'CENTER'
+            elements.append(logo)
+        except Exception as e:
+            print("Error loading logo:", e)
+    else:
+        print("Logo not found by staticfiles finder!")
+
+    # Company name and slogan
+    elements.append(Paragraph("<strong>Crumb & Co.</strong>", styles['CenterTitle']))
+    elements.append(Paragraph("You Buy, We Serve", styles['CenterSubTitle']))
+
+    # Report title
+    elements.append(Paragraph("<strong>Order History Report</strong>", styles['CenterTitle']))
     elements.append(Spacer(1, 12))
 
-    # Table data
-    data = [["Order ID", "Date", "Total", "Address", "Status"]]
-    for order in orders:
-        data.append([
-            str(order.id),
-            order.created_at.strftime("%Y-%m-%d %H:%M"),
-            f"R{order.total_price:.2f}",
-            order.delivery_address,
-            order.status.title(),
-        ])
+    # Customer details table
+    customer_data = [
+        ["Name:", request.user.get_full_name()],
+        ["Email:", request.user.email]
+    ]
+    if hasattr(request.user, 'profile'):
+        if getattr(request.user.profile, 'phone', None):
+            customer_data.append(["Phone:", request.user.profile.phone])
+        if getattr(request.user.profile, 'address', None):
+            customer_data.append(["Address:", request.user.profile.address])
 
-    table = Table(data, repeatRows=1)
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-        ("GRID", (0, 0), (-1, -1), 1, colors.black),
+    customer_table = Table(customer_data, colWidths=[100, 350])
+    customer_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.whitesmoke),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
+        ('FONTSIZE', (0,0), (-1,-1), 10),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey)
     ]))
-    elements.append(table)
+    elements.append(customer_table)
+    elements.append(Spacer(1, 20))
 
+    # Function to create order tables
+    def create_order_table(orders, title, status_color):
+        elements.append(Paragraph(title, styles['HeadingLeft']))
+        if orders:
+            data = [["Order #", "Date", "Total", "Delivery Address", "Status"]]
+            for order in orders:
+                data.append([
+                    str(order.id),
+                    order.created_at.strftime("%Y-%m-%d %H:%M"),
+                    f"R{order.total_price:.2f}",
+                    order.delivery_address,
+                    order.status.title()
+                ])
+            table = Table(data, repeatRows=1, colWidths=[50, 80, 60, 180, 60])
+            table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
+                ("TEXTCOLOR", (-1, 1), (-1, -1), status_color),
+            ]))
+            elements.append(table)
+        else:
+            elements.append(Paragraph(f"No {title.lower()}.", styles['Normal']))
+        elements.append(Spacer(1, 12))
+
+    # Completed Orders (green)
+    create_order_table(completed_orders, "Completed Orders", colors.green)
+
+    # Cancelled Orders (red)
+    create_order_table(cancelled_orders, "Cancelled Orders", colors.red)
+
+    # Timestamp
+    timestamp = timezone.now().strftime("%Y-%m-%d %H:%M")
+    elements.append(Spacer(1, 24))
+    elements.append(Paragraph(f"Report generated on: {timestamp}", styles['Normal']))
+
+    # Build PDF
     doc.build(elements)
     buffer.seek(0)
 

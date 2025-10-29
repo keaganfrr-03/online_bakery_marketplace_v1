@@ -1,5 +1,7 @@
 from django.contrib import admin
 from django.urls import path, include
+
+from web_app import views
 from web_app.views import (
     index, category_detail, CustomLoginView, add_to_cart, cart_view, remove_from_cart, checkout_view,
     order_confirmation, register_view, vendor_dash, add_product, edit_product, delete_product, profile_view,
@@ -79,6 +81,7 @@ urlpatterns = [
     path("order_history/", customer_order_history, name="customer_order_history"),
     path("customer_dashboard/", customer_dashboard, name="customer_dashboard"),
     path('vendor/activity_logs/', activity_log_view, name='vendor_activity_logs'),
+    path('update-cart/', views.update_cart, name='update_cart'),
 
     path("orders/history/print/", print_customer_order_history, name="print_customer_order_history"),
     path("orders/history/download/", download_customer_order_history, name="download_customer_order_history"),

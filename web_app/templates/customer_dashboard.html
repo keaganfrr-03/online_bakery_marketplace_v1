@@ -30,7 +30,7 @@
         {% for order in orders %}
             <li class="list-group-item d-flex justify-content-between align-items-center">
                 Order #{{ order.id }} - {{ order.status }}
-                <span class="badge bg-primary">${{ order.total_price }}</span>
+                <span class="badge bg-primary">R{{ order.total_price }}</span>
             </li>
         {% endfor %}
     </ul>
