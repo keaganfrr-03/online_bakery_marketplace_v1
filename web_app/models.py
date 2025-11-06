@@ -91,11 +91,10 @@ class Product(models.Model):
     stock_quantity = models.IntegerField()
     availability = models.BooleanField(default=True)
     category = models.ForeignKey(Category, on_delete=models.CASCADE)
+    vendor = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="products")
 
     # Change this line to use the custom upload path
     image = models.ImageField(upload_to=product_image_upload_path)
-
-    vendor = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
 
     def __str__(self):
         return self.name

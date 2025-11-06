@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 
-from .models import Profile, CustomUser, Category
+from .models import Profile, CustomUser, Category, Product, Order
 
 
 class ProfileForm(forms.ModelForm):
@@ -23,7 +23,7 @@ class ProfileForm(forms.ModelForm):
             self.fields["email"].initial = user.email
             self.user = user
 
-        # ✅ Add Bootstrap classes to all fields
+        # Add Bootstrap classes to all fields
         for field_name, field in self.fields.items():
             if isinstance(field.widget, forms.Select):
                 field.widget.attrs["class"] = "form-select"
@@ -105,6 +105,23 @@ class VendorSettingsForm(forms.Form):
     )
 
 
+class OrderForm(forms.ModelForm):
+    class Meta:
+        model = Order
+        fields = [
+            'user',
+            'delivery_address',
+            'payment_method',
+            'status'
+        ]
+        widgets = {
+            'user': forms.Select(attrs={'class': 'form-select'}),
+            'delivery_address': forms.Textarea(attrs={'class': 'form-control', 'rows': 2}),
+            'payment_method': forms.Select(attrs={'class': 'form-select'}),
+            'status': forms.Select(attrs={'class': 'form-select'}),
+        }
+
+
 class VendorLoginForm(AuthenticationForm):
     vendor_id = forms.CharField(
         required=False,  # for now it's just visual, not validated
@@ -149,3 +166,45 @@ class CategoryForm(forms.ModelForm):
                 'placeholder': 'Category Name'
             }),
         }
+
+class ProductForm(forms.ModelForm):
+    class Meta:
+        model = Product
+        fields = [
+            'name',
+            'category',
+            'vendor',
+            'price',
+            'stock_quantity',
+            'availability',
+            'description',
+            'image',
+        ]
+        labels = {
+            'name': 'Product Name',
+            'category': 'Category',
+            'vendor': 'Vendor',
+            'price': 'Price',
+            'stock_quantity': 'Stock Quantity',
+            'availability': 'Availability',
+            'description': 'Product Description',
+            'image': 'Product Image',
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Limit vendors to only users with user_type='vendor'
+        self.fields['vendor'].queryset = CustomUser.objects.filter(user_type='vendor')
+
+        # Add Bootstrap classes
+        for field_name, field in self.fields.items():
+            if isinstance(field.widget, forms.Select):
+                field.widget.attrs['class'] = 'form-select'
+            elif isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs['class'] = 'form-check-input'
+            else:
+                field.widget.attrs['class'] = 'form-control'
+
+        # Make checkbox label appear correctly
+        self.fields['availability'].label = "Active"

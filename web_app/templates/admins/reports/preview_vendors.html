@@ -6,6 +6,9 @@
 {% block admin_content %}
 
 <div class="d-flex justify-content-end mb-3 no-print">
+    <a href="{% url 'admin_reports' %}" class="btn btn-outline-secondary btn-sm me-2">
+        <i class="bi bi-arrow-left"></i> Back
+    </a>
     <button onclick="window.print()" class="btn btn-outline-secondary btn-sm me-2">
         <i class="bi bi-printer"></i> Print
     </button>
@@ -61,6 +64,13 @@
         <small>Report generated on {{ now|date:"Y-m-d H:i" }} by {{ request.user.username }}</small>
     </p>
 
+</div>
+
+<!-- Bottom Back Button -->
+<div class="d-flex justify-content-start mt-4 no-print">
+    <a href="{% url 'admin_reports' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back to Reports
+    </a>
 </div>
 
 <style>

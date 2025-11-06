@@ -5,7 +5,11 @@
 
 {% block admin_content %}
 
+<!-- Top Toolbar -->
 <div class="d-flex justify-content-end mb-3 no-print">
+    <a href="{% url 'admin_reports' %}" class="btn btn-outline-secondary btn-sm me-2">
+        <i class="bi bi-arrow-left"></i> Back
+    </a>
     <button onclick="window.print()" class="btn btn-outline-secondary btn-sm me-2">
         <i class="bi bi-printer"></i> Print
     </button>
@@ -14,9 +18,8 @@
     </a>
 </div>
 
+<!-- Printable Area -->
 <div class="printable-area p-4 border bg-white">
-
-    <!-- Header -->
     <div class="text-center mb-4">
         <img src="{% static 'images/logo.png' %}" alt="Crumb & Co. Logo" style="height: 80px;">
         <h2 class="mt-2"><strong>Crumb & Co.</strong></h2>
@@ -24,7 +27,6 @@
         <small>{{ start_date }} to {{ end_date }}</small>
     </div>
 
-    <!-- Report Title -->
     <h4 class="mt-4 mb-3"><i class="bi bi-people me-2"></i>Top Customers</h4>
 
     {% if customer_sales %}
@@ -58,7 +60,13 @@
     <p class="mt-4 mb-0 text-muted">
         <small>Report generated on {{ now|date:"Y-m-d H:i" }} by {{ request.user.username }}</small>
     </p>
+</div>
 
+<!-- Bottom Toolbar -->
+<div class="d-flex justify-content-start mt-4 no-print">
+    <a href="{% url 'admin_reports' %}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> Back to Reports
+    </a>
 </div>
 
 <style>
