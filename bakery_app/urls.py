@@ -10,7 +10,7 @@ from web_app.views import (
     sales_view, order_history_view, product_search, product_detail, mark_order_paid, customer_orders_view,
     vendor_orders_view, update_order_status, vendor_order_history, customer_order_history, create_checkout_session,
     success, cancel, customer_dashboard, stripe_webhook, activity_log_view, download_customer_order_history,
-    print_customer_order_history, vendor_reports_view)
+    print_customer_order_history, vendor_reports_view, vendor_orders)
 from django.conf import settings
 from django.conf.urls.static import static
 from django.shortcuts import render
@@ -63,7 +63,8 @@ urlpatterns = [
     path("inventory/", inventory_view, name="inventory"),
     # Orders
     path("customer/orders", customer_orders_view, name="customer_orders"),
-    path("vendor/orders", vendor_orders_view, name="vendor_orders"),
+    path("vendor/orders", vendor_orders, name="vendor_orders"),
+    path("vendor/orders_view", vendor_orders_view, name="vendor_orders_view"),
 
     path("customers/", customer_list, name="customer_list"),
     path("reports/", reports_view, name="reports"),

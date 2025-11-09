@@ -29,17 +29,19 @@
             </div>
         </div>
 
-        <div class="mb-3">
-            <label class="form-label">Username</label>
-            {{ user_form.username }}
-            {{ user_form.username.errors }}
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label class="form-label">Username</label>
+                {{ user_form.username }}
+                {{ user_form.username.errors }}
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Email</label>
+                {{ user_form.email }}
+                {{ user_form.email.errors }}
+            </div>
         </div>
 
-        <div class="mb-3">
-            <label class="form-label">Email</label>
-            {{ user_form.email }}
-            {{ user_form.email.errors }}
-        </div>
 
         <!-- Profile Fields -->
         <div class="row mb-3">

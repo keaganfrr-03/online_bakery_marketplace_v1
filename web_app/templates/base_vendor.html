@@ -53,7 +53,7 @@
         <h6 class="px-3 mt-4 mb-2 text-muted text-uppercase small">Maintenance</h6>
         <ul class="nav flex-column mb-2">
             <li class="nav-item">
-                <a class="nav-link" href="{% url 'vendor_reports' %}">
+                <a class="nav-link" href="{% url 'reports' %}">
                     <i class="bi bi-graph-up-arrow me-2"></i> Reports
                 </a>
             </li>
@@ -64,7 +64,7 @@
             </li>
 
             {# Admin only - Activity Logs #}
-            {% if user.user_type == 'admin' %}
+            {% if request.user.is_staff or request.user.is_superuser %}
             <li class="nav-item">
                 <a class="nav-link" href="{% url 'vendor_activity_logs' %}">
                     <i class="bi bi-list-check me-2"></i> Activity Logs

@@ -1,3 +1,4 @@
+import profile
 from decimal import Decimal
 from django.contrib.staticfiles import finders
 from django.core.paginator import Paginator
@@ -29,12 +30,12 @@ from .serializers import (
 )
 from .forms import (
     ProfileForm, VendorProfileForm, VendorSettingsForm,
-    VendorLoginForm, VendorForm, CustomerForm, CategoryForm, ProductForm, OrderForm
+    VendorLoginForm, VendorForm, CustomerForm, CategoryForm, ProductForm, OrderForm, AdminVendorFullForm
 )
 from reportlab.pdfgen import canvas
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from django.db.models import Sum, Prefetch, F, DecimalField, ExpressionWrapper, Max, Count
+from django.db.models import Sum, Prefetch, F, DecimalField, ExpressionWrapper, Max, Count, Avg
 import stripe
 from django.conf import settings
 import logging
@@ -50,9 +51,12 @@ from reportlab.lib import colors
 import io
 from datetime import datetime, timedelta, time
 from collections import defaultdict
-import json
-from django.db.models import Count
+from .utils import generate_vendor_id
+from django.db.models import Sum, Count, F, Q
 from django.utils import timezone
+from datetime import timedelta
+import json
+
 
 logger = logging.getLogger('portal')
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -132,6 +136,7 @@ class UserViewSet(viewsets.ModelViewSet):
         username = request.data.get('username')
         password = request.data.get('password')
         email = request.data.get('email')
+        cell = request.data.get('cell')
         user_type = request.data.get('user_type', '').lower()
 
         if user_type not in ['customer', 'vendor']:
@@ -145,26 +150,39 @@ class UserViewSet(viewsets.ModelViewSet):
             username=username,
             password=password,
             email=email,
+            cell=cell,
             user_type=user_type
         )
 
-        Profile.objects.create(user=user)
+        profile = Profile.objects.create(user=user)
+
+        vendor_id = None
+        if user_type == 'vendor':
+            vendor_id = generate_vendor_id()
+            profile.vendor_id = vendor_id
+            profile.save()
 
         group_name = 'Customers' if user_type == 'customer' else 'Vendors'
         group, _ = Group.objects.get_or_create(name=group_name)
         user.groups.add(group)
 
-        # Log registration (non-admin user activity)
+        # Log registration
         try:
             log_activity(
                 user=user,
                 action="Registered",
-                details=f"New {user_type} registered with username: {username}"
+                details=f"New {user_type} registered with username: {username}. Vendor ID: {vendor_id if vendor_id else 'N/A'}"
             )
         except Exception:
             logger.exception("Failed to log registration activity for %s", username)
 
-        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
+        response_data = UserSerializer(user).data
+        if vendor_id:
+            response_data['vendor_id'] = vendor_id
+            response_data[
+                'message'] = f"Registration successful! Your Vendor ID is: {vendor_id}. Please save it for login."
+
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 
 class ProfileViewSet(viewsets.ModelViewSet):
@@ -199,17 +217,35 @@ def register_view(request):
             user.user_type = form.cleaned_data["user_type"]
             user.save()
 
-            Profile.objects.get_or_create(user=user)
+            # Create or get profile
+            profile, created = Profile.objects.get_or_create(user=user)
+
+            # If user is a vendor, generate and assign vendor_id
+            if user.user_type == "vendor":
+                if not profile.vendor_id:  # Only generate if not already set
+                    vendor_id = generate_vendor_id()
+                    profile.vendor_id = vendor_id
+                    profile.save()
+                else:
+                    vendor_id = profile.vendor_id
+
+                # Display the vendor ID to the user
+                messages.success(
+                    request,
+                    f"Account created successfully! Your Vendor ID is: <strong>{vendor_id}</strong>. "
+                    f"Please save this ID - you will need it to login."
+                )
+            else:
+                messages.success(request, "Account created successfully. You can now log in.")
 
             # Log registration event
             log_activity(
                 user=user,
                 action="Registered (Form)",
-                details=f"User {user.username} registered via form.",
+                details=f"User {user.username} registered via form. Vendor ID: {profile.vendor_id if user.user_type == 'vendor' else 'N/A'}",
                 request=request
             )
 
-            messages.success(request, "Account created successfully. You can now log in.")
             return redirect("login")
     else:
         form = RegisterForm()
@@ -1088,7 +1124,7 @@ def edit_product(request, product_id):
                 request=request
             )
             messages.success(request, "Product updated successfully.")
-            return redirect("vendor_products")
+            return redirect("product_list")
     else:
         form = ProductForm(instance=product)
 
@@ -1114,17 +1150,39 @@ def delete_product(request, product_id):
     return render(request, "vendor/confirm_delete.html", {"product": product})
 
 
+from django.db.models import Avg
+
+
 @login_required
 def product_list(request):
     """List vendor's products with pagination"""
     products_queryset = Product.objects.filter(vendor=request.user).order_by('name')
+
+    # Pagination
     paginator = Paginator(products_queryset, 6)
     page_number = request.GET.get('page')
     products = paginator.get_page(page_number)
 
-    log_activity(user=request.user, action="Viewed Product List", details=f"Viewed products page (page {page_number}).", request=request)
+    # Stats
+    total_products = products_queryset.count()
+    avg_price = products_queryset.aggregate(avg_price=Avg('price'))['avg_price'] or 0
 
-    return render(request, "vendor/product_list.html", {"products": products})
+    log_activity(
+        user=request.user,
+        action="Viewed Product List",
+        details=f"Viewed products page (page {page_number}).",
+        request=request
+    )
+
+    return render(
+        request,
+        "vendor/product_list.html",
+        {
+            "products": products,
+            "total_products": total_products,
+            "avg_price": avg_price,
+        }
+    )
 
 
 @login_required
@@ -1185,6 +1243,7 @@ def inventory_view(request):
 
 
 # VENDOR ORDER MANAGEMENT
+@login_required
 def get_vendor_orders(vendor, status_list=None):
     """
     Returns orders containing the vendor's products.
@@ -1213,16 +1272,46 @@ def vendor_orders(request):
         messages.error(request, "Access denied.")
         return redirect("index")
 
-    orders = Order.objects.filter(
-        orderitem__product__vendor=request.user,
-        status="pending"
-    ).distinct().order_by("-created_at")
+    # Get all orders containing vendor's products (not just pending)
+    all_vendor_orders = Order.objects.filter(
+        orderitem__product__vendor=request.user
+    ).distinct()
 
-    log_activity(user=request.user, action="Viewed Vendor Orders", details=f"Pending orders viewed ({orders.count()}).", request=request)
+    # Filter by status
+    pending_orders = all_vendor_orders.filter(status="pending").order_by("-created_at")
+    paid_orders = all_vendor_orders.filter(status="paid")
+    cancelled_orders = all_vendor_orders.filter(status="cancelled")
 
-    return render(request, "vendor/vendor_orders.html", {"orders": orders})
+    # Calculate statistics
+    pending_count = pending_orders.count()
+    paid_count = paid_orders.count()
+    cancelled_count = cancelled_orders.count()
+
+    # Prepare orders with vendor-specific data
+    orders_with_vendor_data = []
+    for order in pending_orders:
+        order.vendor_items_list = order.vendor_items(request.user)
+        order.vendor_subtotal = order.vendor_subtotal(request.user)
+        orders_with_vendor_data.append(order)
+
+    log_activity(
+        user=request.user,
+        action="Viewed Vendor Orders",
+        details=f"Pending orders viewed ({pending_count}).",
+        request=request
+    )
+
+    context = {
+        "orders": orders_with_vendor_data,
+        "pending_count": pending_count,
+        "paid_count": paid_count,
+        "cancelled_count": cancelled_count,
+    }
+
+    return render(request, "vendor/vendor_orders.html", context)
 
 
+# This view is not being used for now
 @login_required
 def vendor_orders_view(request):
     """View vendor's pending orders with enhanced details"""
@@ -1232,7 +1321,7 @@ def vendor_orders_view(request):
 
     orders = get_vendor_orders(request.user, status_list=["pending"])
     log_activity(user=request.user, action="Viewed Vendor Orders (detailed)", details="Vendor accessed detailed orders.", request=request)
-    return render(request, "vendor/vendor_orders.html", {"orders": orders})
+    return render(request, "vendor/orders.html", {"orders": orders})
 
 
 @login_required
@@ -1242,9 +1331,40 @@ def vendor_order_history(request):
         messages.error(request, "Access denied.")
         return redirect("index")
 
-    orders = get_vendor_orders(request.user, status_list=["paid", "cancelled"])
-    log_activity(user=request.user, action="Viewed Vendor Order History", details="Vendor viewed order history (paid/cancelled).", request=request)
-    return render(request, "vendor/vendor_order_history.html", {"orders": orders})
+    # Get paid and cancelled orders containing vendor's products
+    all_vendor_orders = Order.objects.filter(
+        orderitem__product__vendor=request.user
+    ).distinct()
+
+    orders = all_vendor_orders.filter(
+        status__in=["paid", "cancelled"]
+    ).order_by("-created_at")
+
+    # Calculate statistics
+    paid_count = all_vendor_orders.filter(status="paid").count()
+    cancelled_count = all_vendor_orders.filter(status="cancelled").count()
+
+    # Prepare orders with vendor-specific data
+    orders_with_vendor_data = []
+    for order in orders:
+        order.vendor_items_list = order.vendor_items(request.user)
+        order.vendor_subtotal = order.vendor_subtotal(request.user)
+        orders_with_vendor_data.append(order)
+
+    log_activity(
+        user=request.user,
+        action="Viewed Vendor Order History",
+        details=f"Vendor viewed order history ({orders.count()} orders).",
+        request=request
+    )
+
+    context = {
+        "orders": orders_with_vendor_data,
+        "paid_count": paid_count,
+        "cancelled_count": cancelled_count,
+    }
+
+    return render(request, "vendor/vendor_order_history.html", context)
 
 
 @login_required
@@ -1320,6 +1440,7 @@ def mark_order_paid(request, order_id):
 
 
 # VENDOR ANALYTICS & REPORTS
+
 @login_required
 def sales_view(request):
     """Display vendor sales dashboard with analytics"""
@@ -1327,59 +1448,166 @@ def sales_view(request):
         messages.error(request, "You don't have permission to view this page.")
         return redirect("index")
 
-    sales = (
-        OrderItem.objects.filter(product__vendor=request.user)
-        .select_related("order", "product")
-        .order_by("-order__created_at")
-    )
-
     now = timezone.now()
     today = now.date()
-    start_of_week = today - timedelta(days=today.weekday())
-    start_of_month = today.replace(day=1)
+    period = request.GET.get("period", "month")
 
-    total_sales = 0
-    sales_today = 0
-    sales_week = 0
-    sales_month = 0
+    # Determine date range based on period
+    if period == "day":
+        start_date = today
+        prev_start_date = today - timedelta(days=1)
+        prev_end_date = today - timedelta(days=1)
+    elif period == "week":
+        start_date = today - timedelta(days=today.weekday())
+        prev_start_date = start_date - timedelta(days=7)
+        prev_end_date = start_date - timedelta(days=1)
+    else:  # month
+        start_date = today.replace(day=1)
+        if start_date.month == 1:
+            prev_start_date = start_date.replace(year=start_date.year - 1, month=12, day=1)
+        else:
+            prev_start_date = start_date.replace(month=start_date.month - 1, day=1)
+        prev_end_date = start_date - timedelta(days=1)
 
-    for item in sales:
-        total_sales += item.subtotal
-        order_date = item.order.created_at.date()
-        if order_date == today:
-            sales_today += item.subtotal
-        if order_date >= start_of_week:
-            sales_week += item.subtotal
-        if order_date >= start_of_month:
-            sales_month += item.subtotal
+    # Vendor products
+    vendor_products = request.user.products.all()
 
-    start_date = today - timedelta(days=29)
-    daily_sales = (
-        OrderItem.objects.filter(product__vendor=request.user, order__created_at__date__gte=start_date)
-        .values("order__created_at__date")
-        .annotate(total=Sum("price"))
-        .order_by("order__created_at__date")
+    # All paid sales for vendor
+    all_vendor_sales = OrderItem.objects.filter(
+        product__vendor=request.user,
+        order__status="paid"
+    ).select_related("order", "product", "product__category")
+
+    # Datetime ranges
+    start_datetime = timezone.make_aware(datetime.combine(start_date, datetime.min.time()))
+    end_datetime = timezone.make_aware(datetime.combine(today, datetime.max.time()))
+    current_sales = all_vendor_sales.filter(order__created_at__range=(start_datetime, end_datetime))
+
+    prev_start_datetime = timezone.make_aware(datetime.combine(prev_start_date, datetime.min.time()))
+    prev_end_datetime = timezone.make_aware(datetime.combine(prev_end_date, datetime.max.time()))
+    previous_sales = all_vendor_sales.filter(order__created_at__range=(prev_start_datetime, prev_end_datetime))
+
+    # Metrics
+    current_metrics = current_sales.aggregate(
+        total_sales=Sum(F('quantity') * F('price'), output_field=DecimalField()),
+        total_orders=Count('order', distinct=True)
+    )
+    previous_metrics = previous_sales.aggregate(
+        total_sales=Sum(F('quantity') * F('price'), output_field=DecimalField()),
+        total_orders=Count('order', distinct=True)
     )
 
-    labels = []
-    data = []
-    for i in range(30):
-        day = start_date + timedelta(days=i)
-        labels.append(day.strftime("%Y-%m-%d"))
-        day_sales = next((x["total"] for x in daily_sales if x["order__created_at__date"] == day), 0)
-        data.append(float(day_sales))
+    total_sales = float(current_metrics['total_sales'] or 0)
+    prev_total_sales = float(previous_metrics['total_sales'] or 0)
+    total_orders = current_metrics['total_orders'] or 0
+    prev_total_orders = previous_metrics['total_orders'] or 0
+    avg_sale = total_sales / total_orders if total_orders > 0 else 0
 
-    log_activity(user=request.user, action="Viewed Sales Dashboard", details="Vendor viewed sales analytics.", request=request)
+    # Growth calculations
+    growth_rate = round(((total_sales - prev_total_sales) / prev_total_sales) * 100, 2) \
+        if prev_total_sales > 0 else (100 if total_sales > 0 else 0)
 
-    return render(request, "vendor/sales.html", {
-        "sales": sales,
-        "total_sales": total_sales,
-        "sales_today": sales_today,
-        "sales_week": sales_week,
-        "sales_month": sales_month,
-        "chart_labels": labels,
-        "chart_data": data,
-    })
+    sales_change_percent = round(((total_sales - prev_total_sales) / prev_total_sales) * 100, 1) \
+        if prev_total_sales > 0 else 0
+    orders_change_percent = round(((total_orders - prev_total_orders) / prev_total_orders) * 100, 1) \
+        if prev_total_orders > 0 else 0
+
+    # Precompute daily start/end datetimes for optimization
+    num_days = (today - start_date).days + 1
+    day_ranges = [
+        (
+            timezone.make_aware(datetime.combine(start_date + timedelta(days=i), datetime.min.time())),
+            timezone.make_aware(datetime.combine(start_date + timedelta(days=i), datetime.max.time()))
+        )
+        for i in range(num_days)
+    ]
+
+    # Daily sales data
+    labels = [(start_date + timedelta(days=i)).strftime("%b %d") for i in range(num_days)]
+    daily_data = [
+        float(current_sales.filter(order__created_at__range=dr).aggregate(
+            total=Sum(F('quantity') * F('price'), output_field=DecimalField())
+        )['total'] or 0)
+        for dr in day_ranges
+    ]
+
+    # Sales by Category
+    category_sales = current_sales.values(
+        category_name=F("product__category__name")
+    ).annotate(
+        total=Sum(F('quantity') * F('price'), output_field=DecimalField())
+    ).order_by('-total')
+
+    category_chart_labels = [c["category_name"] or "Uncategorized" for c in category_sales]
+    category_chart_values = [float(c["total"] or 0) for c in category_sales]
+
+    category_chart_data = [{
+        "label": "Sales by Category",
+        "data": category_chart_values,
+        "borderColor": "rgba(139, 77, 35, 1)",
+        "backgroundColor": "rgba(139, 77, 35, 0.1)",
+        "tension": 0.4,
+        "fill": True,
+        "pointBackgroundColor": "rgba(139, 77, 35, 1)",
+        "pointBorderColor": "#fff",
+        "pointBorderWidth": 2,
+        "pointRadius": 4
+    }]
+
+    # Sales per Product
+    product_sales = current_sales.values(
+        product_name=F("product__name")
+    ).annotate(
+        total=Sum(F('quantity') * F('price'), output_field=DecimalField())
+    ).order_by('-total')[:10]
+
+    product_chart_labels = [p["product_name"] for p in product_sales]
+    product_chart_values = [float(p["total"] or 0) for p in product_sales]
+
+    product_colors = [
+        'rgba(139, 77, 35, 0.8)',
+        'rgba(92, 51, 23, 0.8)',
+        'rgba(101, 67, 33, 0.8)',
+        'rgba(128, 85, 53, 0.8)',
+        'rgba(160, 102, 60, 0.8)',
+        'rgba(180, 120, 80, 0.8)',
+        'rgba(200, 140, 100, 0.8)',
+        'rgba(220, 160, 120, 0.8)',
+        'rgba(230, 180, 140, 0.8)',
+        'rgba(240, 200, 160, 0.8)',
+    ]
+
+    product_chart_data = [{
+        "label": "Sales per Product",
+        "data": product_chart_values,
+        "backgroundColor": product_colors[:len(product_chart_values)],
+        "borderColor": [c.replace('0.8', '1') for c in product_colors[:len(product_chart_values)]],
+        "borderWidth": 2
+    }]
+
+    # Render context
+    context = {
+        "period": period,
+        "total_sales": round(total_sales, 2),
+        "total_orders": total_orders,
+        "avg_sale": round(avg_sale, 2),
+        "growth_rate": growth_rate,
+        "sales_change_percent": abs(sales_change_percent),
+        "orders_change_percent": abs(orders_change_percent),
+        "category_chart_labels": json.dumps(category_chart_labels),
+        "category_chart_data": json.dumps(category_chart_data),
+        "product_chart_labels": json.dumps(product_chart_labels),
+        "product_chart_data": json.dumps(product_chart_data),
+    }
+
+    log_activity(
+        user=request.user,
+        action="Viewed Sales Dashboard",
+        details=f"Vendor viewed {period} sales analytics.",
+        request=request
+    )
+
+    return render(request, "vendor/sales.html", context)
 
 
 def filter_sales_by_period(user, period):
@@ -1479,37 +1707,67 @@ def sales_dashboard(request):
 
 @login_required
 def reports_view(request):
-    """Generate and display sales reports (vendor)"""
+    """Generate and display vendor sales reports with correct date filtering."""
     if request.user.user_type != "vendor":
         messages.error(request, "Only vendors can view reports.")
         return redirect("index")
 
     period = request.GET.get("period", "all")
-    sales = OrderItem.objects.filter(product__vendor=request.user, order__status="paid")
     now = timezone.now()
+    today = now.date()
 
+    # Base queryset for all paid order items for this vendor
+    sales = OrderItem.objects.filter(
+        product__vendor=request.user,
+        order__status="paid"
+    )
+
+    # Determine date range based on period
     if period == "day":
-        start_date = now - timedelta(days=1)
-        sales = sales.filter(order__created_at__gte=start_date)
-    elif period == "week":
-        start_date = now - timedelta(weeks=1)
-        sales = sales.filter(order__created_at__gte=start_date)
-    elif period == "month":
-        start_date = now - timedelta(days=30)
-        sales = sales.filter(order__created_at__gte=start_date)
+        start_datetime = timezone.make_aware(datetime.combine(today, time.min))
+        end_datetime = timezone.make_aware(datetime.combine(today, time.max))
+        sales = sales.filter(order__created_at__range=(start_datetime, end_datetime))
 
+    elif period == "week":
+        start_of_week = today - timedelta(days=today.weekday())  # Monday
+        start_datetime = timezone.make_aware(datetime.combine(start_of_week, time.min))
+        end_datetime = timezone.make_aware(datetime.combine(today, time.max))
+        sales = sales.filter(order__created_at__range=(start_datetime, end_datetime))
+
+    elif period == "month":
+        start_of_month = today.replace(day=1)
+        start_datetime = timezone.make_aware(datetime.combine(start_of_month, time.min))
+        end_datetime = timezone.make_aware(datetime.combine(today, time.max))
+        sales = sales.filter(order__created_at__range=(start_datetime, end_datetime))
+
+    # 'all' period returns all paid sales (no date filter)
+
+    # Compute total sales
     total_sales = sales.aggregate(
         total=Sum(F("price") * F("quantity"), output_field=DecimalField())
     )["total"] or 0
 
-    log_activity(user=request.user, action="Viewed Vendor Reports", details=f"Vendor viewed reports for period {period}.", request=request)
+    # Optional: top-selling product
+    top_product = sales.values("product__name").annotate(
+        total_sold=Sum("quantity")
+    ).order_by("-total_sold").first()
 
-    return render(request, "vendor/reports.html", {
+    # Log activity
+    log_activity(
+        user=request.user,
+        action="Viewed Vendor Reports",
+        details=f"Vendor viewed reports for period '{period}'.",
+        request=request
+    )
+
+    context = {
         "sales": sales,
         "total_sales": total_sales,
         "period": period,
-    })
+        "top_product": top_product,
+    }
 
+    return render(request, "vendor/reports.html", context)
 
 @login_required
 def download_report(request):
@@ -1663,22 +1921,53 @@ def customer_list(request):
     ).distinct()
 
     customer_data = []
-    for customer in customers:
-        orders = customer.orders.filter(orderitem__product__vendor=request.user)
-        total_orders = orders.count()
-        total_spent = orders.aggregate(total=Sum('orderitem__price'))['total'] or 0
-        last_order = orders.aggregate(last=Max('created_at'))['last']
+    overall_orders = 0
+    overall_revenue = 0
 
-        customer.get_full_name = f"{customer.first_name} {customer.last_name}".strip()
+    for customer in customers:
+        # Get orders containing vendor's products
+        orders = customer.orders.filter(
+            orderitem__product__vendor=request.user
+        ).distinct()
+
+        total_orders = orders.count()
+
+        # Calculate total spent by this customer on vendor's products
+        total_spent = sum(
+            order.vendor_subtotal(request.user)
+            for order in orders
+        )
+
+        # Get last order date
+        last_order = orders.order_by('-created_at').first()
+        last_order_date = last_order.created_at if last_order else None
+
+        # Add computed attributes to customer object
+        customer.get_full_name = f"{customer.first_name} {customer.last_name}".strip() or customer.username
         customer.total_orders = total_orders
         customer.total_spent = total_spent
-        customer.last_order = last_order
+        customer.last_order = last_order_date
 
         customer_data.append(customer)
 
-    log_activity(user=request.user, action="Viewed Customers List", details=f"Vendor viewed {len(customer_data)} customers.", request=request)
+        # Accumulate overall stats
+        overall_orders += total_orders
+        overall_revenue += total_spent
 
-    return render(request, "vendor/customer_list.html", {"customers": customer_data})
+    log_activity(
+        user=request.user,
+        action="Viewed Customers List",
+        details=f"Vendor viewed {len(customer_data)} customers.",
+        request=request
+    )
+
+    context = {
+        "customers": customer_data,
+        "total_orders": overall_orders,
+        "total_revenue": overall_revenue,
+    }
+
+    return render(request, "vendor/customer_list.html", context)
 
 
 # -----------------------------------------------------------------------------
@@ -1826,7 +2115,6 @@ def admin_product_delete(request, id):
     return render(request, "admins/admin_product_delete_confirm.html", {"product": product})
 
 
-
 @admin_required
 def admin_vendors(request):
     vendors = CustomUser.objects.filter(user_type="vendor")
@@ -1843,7 +2131,11 @@ def admin_vendors(request):
 
 @admin_required
 def admin_vendor_detail(request, id):
+    """
+    Admin view for full vendor details (CustomUser + Profile)
+    """
     vendor = get_object_or_404(CustomUser, id=id, user_type="vendor")
+    profile = getattr(vendor, "profile", None)
 
     log_activity(
         user=request.user,
@@ -1851,35 +2143,33 @@ def admin_vendor_detail(request, id):
         details=f"Admin viewed vendor profile: {vendor.username} (ID: {vendor.id})",
         request=request
     )
-    return render(request, "admins/admin_vendor_detail.html", {"vendor": vendor})
+
+    return render(request, "admins/admin_vendor_detail.html", {
+        "vendor": vendor,
+        "profile": profile,
+    })
 
 
 @admin_required
 def admin_vendor_edit(request, id):
-    """
-    Admin can edit vendor account details.
-    """
     vendor = get_object_or_404(CustomUser, id=id, user_type="vendor")
+    profile, _ = Profile.objects.get_or_create(user=vendor)
 
     if request.method == "POST":
-        form = VendorForm(request.POST, instance=vendor)
+        form = AdminVendorFullForm(request.POST, instance=profile, user_instance=vendor)
         if form.is_valid():
             form.save()
             messages.success(request, "Vendor updated successfully.")
-
-            # Activity Log Added
             log_activity(
                 user=request.user,
                 action="Edited Vendor",
                 details=f"Admin updated vendor {vendor.username} (ID: {vendor.id}).",
                 request=request
             )
-
             return redirect("admin_vendors")
     else:
-        form = VendorForm(instance=vendor)
+        form = AdminVendorFullForm(instance=profile, user_instance=vendor)
 
-    # Log viewing of vendor edit page
     log_activity(
         user=request.user,
         action="Viewed Vendor Edit Page",
@@ -2069,7 +2359,7 @@ def admin_category_add(request):
     Admin adds a new product category.
     """
     if request.method == "POST":
-        form = CategoryForm(request.POST)
+        form = CategoryForm(request.POST, request.FILES)  # Add request.FILES
         if form.is_valid():
             category = form.save()
             messages.success(request, f"Category '{category.name}' added successfully.")
@@ -2081,7 +2371,6 @@ def admin_category_add(request):
                 details=f"Admin created a new category '{category.name}' (ID: {category.id}).",
                 request=request
             )
-
             return redirect("admin_categories")
     else:
         form = CategoryForm()
@@ -2095,6 +2384,7 @@ def admin_category_add(request):
     )
 
     return render(request, "admins/admin_category_add.html", {"form": form})
+
 
 @admin_required
 def admin_category_edit(request, id):
@@ -2934,18 +3224,16 @@ def vendor_reports_view(request):
         return redirect("index")
 
     # Vendor's products
-    vendor_products = request.user.products.all()  # assuming related_name='products'
-
-    # Order items belonging to this vendor
-    vendor_order_items = OrderItem.objects.filter(product__vendor=request.user)
+    vendor_products = request.user.products.all()
 
     # Orders containing vendor's products
+    vendor_order_items = OrderItem.objects.filter(product__vendor=request.user)
     vendor_orders = Order.objects.filter(orderitem__in=vendor_order_items).distinct().order_by('-created_at')
 
-    # Compute total revenue (only vendor's products)
-    total_revenue = vendor_order_items.aggregate(total=Sum('price'))['total'] or 0
+    # Total revenue
+    total_revenue = sum(item.price * item.quantity for item in vendor_order_items)
 
-    # Compute top-selling product
+    # Top-selling product
     top_product = (
         vendor_order_items
         .values('product__name')
@@ -2954,16 +3242,25 @@ def vendor_reports_view(request):
         .first()
     )
 
-    # Prepare a dict of orders with only this vendor's items
+    # Prepare orders with only this vendor's items and their subtotals
     orders_with_items = []
     for order in vendor_orders:
-        items = order.orderitem_set.filter(product__vendor=request.user)
-        subtotal = sum(item.price * item.quantity for item in items)
-        orders_with_items.append({
-            "order": order,
-            "items": items,
-            "subtotal": subtotal,
-        })
+        items_qs = order.orderitem_set.filter(product__vendor=request.user)
+        line_items = []
+        subtotal = 0
+        for item in items_qs:
+            line_total = item.price * item.quantity
+            subtotal += line_total
+            line_items.append({
+                "item": item,
+                "line_total": line_total
+            })
+        if line_items:
+            orders_with_items.append({
+                "order": order,
+                "items": line_items,
+                "subtotal": subtotal,
+            })
 
     context = {
         "vendor_products": vendor_products,
