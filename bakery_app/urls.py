@@ -97,6 +97,11 @@ urlpatterns = [
     path("admins/analytics/", views.admin_analytics, name="admin_analytics"),
     path('admins/reports/', views.admin_reports, name='admin_reports'),
     path('admins/settings/', views.admin_settings, name='admin_settings'),
+    path('admins/settings/backup/', views.admin_backup, name='admin_backup'),
+    path('admins/settings/localization/', views.admin_update_localization, name='admin_update_localization'),
+    path('admins/settings/account/', views.admin_update_account, name='admin_update_account'),
+
+
 
     # Admin Products
     path("admins/products/", views.admin_all_products, name="admin_all_products"),

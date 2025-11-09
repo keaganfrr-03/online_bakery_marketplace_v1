@@ -1,7 +1,10 @@
 import profile
+import subprocess
 from decimal import Decimal
+
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.staticfiles import finders
-from django.core.paginator import Paginator
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework import viewsets, status
@@ -798,7 +801,7 @@ def checkout_view(request):
             return JsonResponse({'error': str(e)}, status=500)
 
     else:
-        return JsonResponse({'error': 'PayPal payment method NOT active yet!! '}, status=400)
+        return JsonResponse({'error': 'PayPal payment is currently unavailable. Please use Card or Cash on Delivery.'}, status=400)
 
 
 @login_required
@@ -1707,67 +1710,56 @@ def sales_dashboard(request):
 
 @login_required
 def reports_view(request):
-    """Generate and display vendor sales reports with correct date filtering."""
     if request.user.user_type != "vendor":
         messages.error(request, "Only vendors can view reports.")
         return redirect("index")
 
     period = request.GET.get("period", "all")
+    sales = OrderItem.objects.filter(product__vendor=request.user, order__status="paid")
     now = timezone.now()
-    today = now.date()
 
-    # Base queryset for all paid order items for this vendor
-    sales = OrderItem.objects.filter(
-        product__vendor=request.user,
-        order__status="paid"
-    )
-
-    # Determine date range based on period
+    # Filter by period
     if period == "day":
-        start_datetime = timezone.make_aware(datetime.combine(today, time.min))
-        end_datetime = timezone.make_aware(datetime.combine(today, time.max))
-        sales = sales.filter(order__created_at__range=(start_datetime, end_datetime))
-
+        start_date = now - timedelta(days=1)
+        sales = sales.filter(order__created_at__gte=start_date)
     elif period == "week":
-        start_of_week = today - timedelta(days=today.weekday())  # Monday
-        start_datetime = timezone.make_aware(datetime.combine(start_of_week, time.min))
-        end_datetime = timezone.make_aware(datetime.combine(today, time.max))
-        sales = sales.filter(order__created_at__range=(start_datetime, end_datetime))
-
+        start_date = now - timedelta(weeks=1)
+        sales = sales.filter(order__created_at__gte=start_date)
     elif period == "month":
-        start_of_month = today.replace(day=1)
-        start_datetime = timezone.make_aware(datetime.combine(start_of_month, time.min))
-        end_datetime = timezone.make_aware(datetime.combine(today, time.max))
-        sales = sales.filter(order__created_at__range=(start_datetime, end_datetime))
+        start_date = now - timedelta(days=30)
+        sales = sales.filter(order__created_at__gte=start_date)
 
-    # 'all' period returns all paid sales (no date filter)
+    # Annotate subtotal using a different name
+    sales = sales.annotate(calculated_subtotal=F("quantity") * F("price"))
 
-    # Compute total sales
     total_sales = sales.aggregate(
         total=Sum(F("price") * F("quantity"), output_field=DecimalField())
     )["total"] or 0
 
-    # Optional: top-selling product
-    top_product = sales.values("product__name").annotate(
-        total_sold=Sum("quantity")
-    ).order_by("-total_sold").first()
+    # Pagination
+    page = request.GET.get("page", 1)
+    paginator = Paginator(sales.order_by('-order__created_at'), 10)
 
-    # Log activity
+    try:
+        sales_page = paginator.page(page)
+    except PageNotAnInteger:
+        sales_page = paginator.page(1)
+    except EmptyPage:
+        sales_page = paginator.page(paginator.num_pages)
+
     log_activity(
         user=request.user,
         action="Viewed Vendor Reports",
-        details=f"Vendor viewed reports for period '{period}'.",
+        details=f"Vendor viewed reports for period {period}.",
         request=request
     )
 
-    context = {
-        "sales": sales,
+    return render(request, "vendor/reports.html", {
+        "sales": sales_page,
         "total_sales": total_sales,
         "period": period,
-        "top_product": top_product,
-    }
-
-    return render(request, "vendor/reports.html", context)
+        "paginator": paginator
+    })
 
 @login_required
 def download_report(request):
@@ -2218,6 +2210,7 @@ def admin_customer_detail(request, id):
     Admin can view detailed customer profile, order history, and stats.
     """
     customer = get_object_or_404(CustomUser, id=id, user_type="customer")
+    profile = getattr(customer, "profile", None)  # get related profile safely
 
     # Fetch customer's orders and total spend
     orders = Order.objects.filter(user=customer)
@@ -2225,7 +2218,7 @@ def admin_customer_detail(request, id):
     total_spent = orders.aggregate(total=Sum("total_price"))["total"] or 0
     last_order = orders.aggregate(last=Max("created_at"))["last"]
 
-    # Activity Log Added
+    # Activity Log
     log_activity(
         user=request.user,
         action="Viewed Customer Detail",
@@ -2235,6 +2228,7 @@ def admin_customer_detail(request, id):
 
     context = {
         "customer": customer,
+        "profile": profile,
         "orders": orders,
         "total_orders": total_orders,
         "total_spent": total_spent,
@@ -2242,6 +2236,7 @@ def admin_customer_detail(request, id):
     }
 
     return render(request, "admins/admin_customer_detail.html", context)
+
 
 
 @admin_required
@@ -2908,9 +2903,19 @@ def admin_report_delete(request, report_id):
     return redirect('admin_reports')
 
 
+from django import get_version as django_version
+import sys
+
 @admin_required
 def admin_settings(request):
-    context = {}
+    context = {
+        'django_version': django_version(),
+        'python_version': f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        'app_version': '1.0.0',
+        'developer': 'eComputer Network Solutions',
+        'support_contact': 'support@ecns.co.za',
+    }
+
     log_activity(
         user=request.user,
         action="Viewed Admin Settings",
@@ -2918,6 +2923,7 @@ def admin_settings(request):
         request=request
     )
     return render(request, "admins/admin_settings.html", context)
+
 
 
 @admin_required
@@ -3087,21 +3093,34 @@ def stripe_success(request, order_id):
 
 def handle_paypal_payment(request, order):
     """
-    PayPal payment handler - Currently not implemented
-    Returns error message prompting user to select alternative payment
+    PayPal payment handler - Currently not implemented.
+    Provides friendly notification and alternative actions.
     """
+    # Log the attempt
     log_activity(
         user=order.user,
-        action="PayPal Attempted",
-        details=f"User tried PayPal for Order #{order.id} (not yet active)",
+        action="Attempted PayPal Payment",
+        details=f"User tried PayPal for Order #{order.id} (currently inactive)",
         request=request
     )
 
-    return JsonResponse({
-        'error': 'PayPal payment method is not active yet. Please use Card or Cash on Delivery.',
-        'alternative_methods': ['card', 'cash']
-    }, status=400)
+    # Prepare frontend-friendly response
+    response_data = {
+        'status': 'failed',
+        'message': "PayPal is currently unavailable. Please select an alternative payment method.",
+        'alternatives': [
+            {
+                'method': 'Card',
+                'url': reverse('checkout_card', kwargs={'order_id': order.id})
+            },
+            {
+                'method': 'Cash on Delivery',
+                'url': reverse('checkout_cod', kwargs={'order_id': order.id})
+            }
+        ]
+    }
 
+    return JsonResponse(response_data, status=400)
 
 # -----------------------------------------------------------------------------
 # INVOICES & DOCUMENTS
@@ -3320,3 +3339,81 @@ def vendor_reports_pdf_view(request):
 
     doc.build(elements)
     return response
+
+
+
+@staff_member_required
+def admin_backup(request):
+    """Triggers manual database and media backup"""
+    backup_dir = os.path.join(settings.BASE_DIR, "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+
+    timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
+    db_file = os.path.join(backup_dir, f"db_backup_{timestamp}.sql")
+    media_archive = os.path.join(backup_dir, f"media_backup_{timestamp}.tar.gz")
+
+    # --- Database Backup ---
+    try:
+        subprocess.run(
+            ["mysqldump", "-u", settings.DATABASES["default"]["USER"],
+             f"-p{settings.DATABASES['default']['PASSWORD']}",
+             settings.DATABASES["default"]["NAME"], ">", db_file],
+            shell=True,
+            check=True
+        )
+        # --- Media Backup ---
+        subprocess.run(["tar", "-czf", media_archive, settings.MEDIA_ROOT], check=True)
+
+        messages.success(request, f"Backup created successfully at {timestamp}.")
+    except Exception as e:
+        messages.error(request, f"Backup failed: {e}")
+
+    return redirect("admin_settings")
+
+
+@staff_member_required
+def admin_update_localization(request):
+    """Handle updates for language, currency, and timezone settings."""
+    if request.method == "POST":
+        language = request.POST.get("language")
+        currency = request.POST.get("currency")
+        timezone = request.POST.get("timezone")
+
+        # Example: save them in a config model or settings table
+        from .models import SiteSetting  # adjust to your model name
+        site_settings, _ = SiteSetting.objects.get_or_create(id=1)
+        site_settings.language = language
+        site_settings.currency = currency
+        site_settings.timezone = timezone
+        site_settings.save()
+
+        messages.success(request, "Localization settings updated successfully.")
+    return redirect("admin_settings")
+
+
+@staff_member_required
+def admin_update_account(request):
+    """Allow admin to update username, email, and password."""
+    if request.method == "POST":
+        username = request.POST.get("username")
+        email = request.POST.get("email")
+        password = request.POST.get("password")
+        password_confirm = request.POST.get("password_confirm")
+
+        admin_user = request.user
+
+        if password and password != password_confirm:
+            messages.error(request, "Passwords do not match.")
+            return redirect("admin_settings")
+
+        # Update fields
+        admin_user.username = username
+        admin_user.email = email
+        if password:
+            admin_user.set_password(password)
+        admin_user.save()
+
+        messages.success(request, "Admin account updated successfully.")
+        return redirect("admin_settings")
+
+
