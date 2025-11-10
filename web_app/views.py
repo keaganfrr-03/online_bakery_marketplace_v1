@@ -1328,6 +1328,10 @@ def vendor_orders_view(request):
     return render(request, "vendor/orders.html", {"orders": orders})
 
 
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.db.models import Q
+
+
 @login_required
 def vendor_order_history(request):
     """View vendor's completed and cancelled orders"""
@@ -1344,7 +1348,25 @@ def vendor_order_history(request):
         status__in=["paid", "cancelled"]
     ).order_by("-created_at")
 
-    # Calculate statistics
+    # Apply filters
+    customer_filter = request.GET.get('customer', '').strip()
+    order_number_filter = request.GET.get('order_number', '').strip()
+    status_filter = request.GET.get('status', '')
+
+    if customer_filter:
+        orders = orders.filter(
+            Q(user__username__icontains=customer_filter) |
+            Q(user__first_name__icontains=customer_filter) |
+            Q(user__last_name__icontains=customer_filter)
+        )
+
+    if order_number_filter:
+        orders = orders.filter(id__icontains=order_number_filter)
+
+    if status_filter and status_filter in ['paid', 'cancelled']:
+        orders = orders.filter(status=status_filter)
+
+    # Calculate statistics (based on all orders, not filtered)
     paid_count = all_vendor_orders.filter(status="paid").count()
     cancelled_count = all_vendor_orders.filter(status="cancelled").count()
 
@@ -1355,17 +1377,31 @@ def vendor_order_history(request):
         order.vendor_subtotal = order.vendor_subtotal(request.user)
         orders_with_vendor_data.append(order)
 
+    # Add pagination - 20 items per page
+    paginator = Paginator(orders_with_vendor_data, 20)
+    page = request.GET.get('page')
+
+    try:
+        paginated_orders = paginator.page(page)
+    except PageNotAnInteger:
+        paginated_orders = paginator.page(1)
+    except EmptyPage:
+        paginated_orders = paginator.page(paginator.num_pages)
+
     log_activity(
         user=request.user,
         action="Viewed Vendor Order History",
-        details=f"Vendor viewed order history ({orders.count()} orders).",
+        details=f"Vendor viewed order history (page {paginated_orders.number} of {paginator.num_pages}).",
         request=request
     )
 
     context = {
-        "orders": orders_with_vendor_data,
+        "orders": paginated_orders,
         "paid_count": paid_count,
         "cancelled_count": cancelled_count,
+        "customer_filter": customer_filter,
+        "order_number_filter": order_number_filter,
+        "status_filter": status_filter,
     }
 
     return render(request, "vendor/vendor_order_history.html", context)
