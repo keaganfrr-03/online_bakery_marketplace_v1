@@ -502,7 +502,9 @@ def add_to_cart(request, product_id):
                 cart_item.quantity += qty
                 cart_item.save()
 
-            cart_count = Cart.objects.filter(user=request.user).count()
+            # Calculate total quantity (sum of all items)
+            cart_items = Cart.objects.filter(user=request.user)
+            cart_count = sum(item.quantity for item in cart_items)
 
             # Log add to cart
             log_activity(
@@ -537,7 +539,6 @@ def add_to_cart(request, product_id):
             return redirect("login")
 
     return redirect("index")
-
 
 def update_cart(request):
     """Update cart quantities or remove items"""
@@ -590,6 +591,12 @@ def cart_view(request):
     profile, _ = Profile.objects.get_or_create(user=user)
 
     if request.method == "POST":
+        # Handle AJAX request for cart count (total quantity)
+        if request.POST.get('get_cart_count'):
+            cart_items = Cart.objects.filter(user=user)
+            cart_count = sum(item.quantity for item in cart_items)
+            return JsonResponse({'cart_count': cart_count})
+
         product_id = request.POST.get("product_id")
         action = request.POST.get("action")
         qty_input = request.POST.get("quantity")
@@ -602,7 +609,8 @@ def cart_view(request):
                 if cart_item.quantity < product.stock_quantity:
                     cart_item.quantity += 1
                     cart_item.save()
-                    log_activity(user=user, action="Cart Increment", details=f"Incremented {product.name} in cart.", request=request)
+                    log_activity(user=user, action="Cart Increment", details=f"Incremented {product.name} in cart.",
+                                 request=request)
                 else:
                     messages.warning(request, f"Cannot add more. Only {product.stock_quantity} in stock.")
             elif action == "decrement":
@@ -610,24 +618,28 @@ def cart_view(request):
                 if cart_item.quantity <= 0:
                     cart_item.delete()
                     messages.info(request, f"{product.name} removed from cart.")
-                    log_activity(user=user, action="Cart Remove", details=f"{product.name} removed from cart.", request=request)
+                    log_activity(user=user, action="Cart Remove", details=f"{product.name} removed from cart.",
+                                 request=request)
                 else:
                     cart_item.save()
-                    log_activity(user=user, action="Cart Decrement", details=f"Decremented {product.name} in cart.", request=request)
+                    log_activity(user=user, action="Cart Decrement", details=f"Decremented {product.name} in cart.",
+                                 request=request)
             elif action == "update":
                 try:
                     new_qty = int(qty_input)
                     if new_qty <= 0:
                         cart_item.delete()
                         messages.info(request, f"{product.name} removed from cart.")
-                        log_activity(user=user, action="Cart Remove", details=f"{product.name} removed from cart (update).", request=request)
+                        log_activity(user=user, action="Cart Remove",
+                                     details=f"{product.name} removed from cart (update).", request=request)
                     elif new_qty > product.stock_quantity:
                         messages.warning(request, f"Cannot set quantity higher than stock ({product.stock_quantity}).")
                     else:
                         cart_item.quantity = new_qty
                         cart_item.save()
                         messages.success(request, f"{product.name} quantity updated.")
-                        log_activity(user=user, action="Cart Update", details=f"Updated {product.name} quantity to {new_qty}.", request=request)
+                        log_activity(user=user, action="Cart Update",
+                                     details=f"Updated {product.name} quantity to {new_qty}.", request=request)
                 except ValueError:
                     messages.error(request, "Invalid quantity input.")
 
@@ -651,7 +663,6 @@ def cart_view(request):
         "total": total,
         "profile": profile,
     })
-
 
 @require_POST
 @login_required(login_url='/accounts/login/')
