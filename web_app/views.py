@@ -198,11 +198,17 @@ class ProfileViewSet(viewsets.ModelViewSet):
 class RegisterForm(UserCreationForm):
     """Form for user registration"""
     email = forms.EmailField(required=True)
-    cell = forms.CharField(max_length=15, required=True, label="Cell Number")
+    cell = forms.CharField(
+        max_length=15,
+        required=False,  # Changed to not required
+        label="Cell Number",
+        initial=""  # Default empty value
+    )
     user_type = forms.ChoiceField(
         choices=[("customer", "Customer"), ("vendor", "Vendor")],
         widget=forms.RadioSelect,
-        required=True
+        required=True,
+        initial="customer"  # Set default to customer
     )
 
     class Meta:
@@ -217,7 +223,7 @@ def register_view(request):
         if form.is_valid():
             user = form.save(commit=False)
             user.email = form.cleaned_data["email"]
-            user.cell = form.cleaned_data["cell"]
+            user.cell = form.cleaned_data.get("cell", "")  # Use get() with default empty string
             user.user_type = form.cleaned_data["user_type"]
             user.save()
 
@@ -236,8 +242,8 @@ def register_view(request):
                 # Display the vendor ID to the user
                 messages.success(
                     request,
-                    f"Account created successfully! Your Vendor ID is: <strong>{vendor_id}</strong>. "
-                    f"Please save this ID - you will need it to login."
+                    f"Account created successfully!"
+                    f"Your Vendor ID is: {vendor_id}."
                 )
             else:
                 messages.success(request, "Account created successfully. You can now log in.")
@@ -255,7 +261,6 @@ def register_view(request):
         form = RegisterForm()
 
     return render(request, "register.html", {"form": form})
-
 
 class CustomLoginView(LoginView):
     """Custom login view with cart persistence"""
@@ -3135,7 +3140,7 @@ def activity_log_view(request):
     distinct_actions = ActivityLog.objects.values_list('action', flat=True).distinct().order_by('action')
 
     # Pagination
-    paginator = Paginator(logs, 50)  # 50 logs per page
+    paginator = Paginator(logs, 15)  # 50 logs per page
     page_number = request.GET.get('page')
     logs = paginator.get_page(page_number)
 
