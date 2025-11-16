@@ -54,5 +54,5 @@ python manage.py assign_vendor_ids --all
 python manage.py assign_vendor_ids --username john_vendor
 
 
-Reach out to me at keaganschutte@gmail.com for any queries.
+Reach out to me at keaganschutte16@gmail.com for any queries.
 
