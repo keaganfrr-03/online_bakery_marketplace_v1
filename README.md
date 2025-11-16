@@ -2,7 +2,7 @@ This is a virtual marketplace, where vendors and customers buy and sell bakery p
 
 Setup
 1. Clone the repo git clone: git clone https://github.com/keaganfrr-03/online_bakery_marketplace_v1.git
-2. and then run: cd cd online_bakery_marketplace_v1
+2. and then run: cd online_bakery_marketplace_v1
 3. Create a branch and switch to it: git checkout -b my_version
 4. Create virtual environment: python -m venv .venv
 5. Activate the venv source: .\.venv\Scripts\activate
