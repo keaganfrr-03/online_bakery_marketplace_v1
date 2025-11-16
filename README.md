@@ -1,7 +1,7 @@
 This is a virtual marketplace, where vendors and customers buy and sell bakery products conveniently. The app runs on Django, with external MySQL DB
 
 Setup
-1. Clone the repo git clone: git clone https://github.com/eddiecns/online_bakery_market.git 
+1. Clone the repo git clone: git clone https://github.com/keaganfrr-03/online_bakery_marketplace_v1.git
 2. and then run: cd online_bakery_market
 3. Create a branch and switch to it: git checkout -b my_version
 4. Create virtual environment: python -m venv .venv
